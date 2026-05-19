@@ -1,0 +1,184 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+  /* Colors */
+  --hue: 250;
+  
+  /* Light Theme Variables */
+  --bg-base: hsl(var(--hue), 20%, 98%);
+  --bg-surface: hsla(var(--hue), 20%, 100%, 0.7);
+  --bg-surface-solid: hsl(var(--hue), 20%, 100%);
+  --text-primary: hsl(var(--hue), 30%, 15%);
+  --text-secondary: hsl(var(--hue), 15%, 45%);
+  --border: hsla(var(--hue), 20%, 85%, 0.5);
+  
+  --primary: hsl(var(--hue), 80%, 60%);
+  --primary-hover: hsl(var(--hue), 80%, 55%);
+  --primary-bg: hsla(var(--hue), 80%, 60%, 0.1);
+  
+  --success: hsl(150, 80%, 40%);
+  --success-bg: hsla(150, 80%, 40%, 0.1);
+  --danger: hsl(350, 80%, 55%);
+  --danger-bg: hsla(350, 80%, 55%, 0.1);
+
+  /* Typography */
+  --font-heading: 'Outfit', sans-serif;
+  --font-body: 'Inter', sans-serif;
+
+  /* Shadows & Glass */
+  --shadow-sm: 0 2px 8px hsla(var(--hue), 30%, 15%, 0.05);
+  --shadow-md: 0 8px 24px hsla(var(--hue), 30%, 15%, 0.08);
+  --glass-blur: blur(12px);
+  --glass-border: 1px solid hsla(var(--hue), 20%, 100%, 0.5);
+  
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+}
+
+[data-theme='dark'] {
+  --bg-base: hsl(var(--hue), 15%, 8%);
+  --bg-surface: hsla(var(--hue), 15%, 12%, 0.7);
+  --bg-surface-solid: hsl(var(--hue), 15%, 12%);
+  --text-primary: hsl(var(--hue), 20%, 95%);
+  --text-secondary: hsl(var(--hue), 15%, 65%);
+  --border: hsla(var(--hue), 20%, 25%, 0.5);
+  
+  --primary: hsl(var(--hue), 80%, 65%);
+  --primary-hover: hsl(var(--hue), 80%, 70%);
+  --primary-bg: hsla(var(--hue), 80%, 65%, 0.15);
+  
+  --success: hsl(150, 70%, 50%);
+  --success-bg: hsla(150, 70%, 50%, 0.15);
+  --danger: hsl(350, 80%, 65%);
+  --danger-bg: hsla(350, 80%, 65%, 0.15);
+
+  --shadow-sm: 0 2px 8px hsla(0, 0%, 0%, 0.2);
+  --shadow-md: 0 8px 24px hsla(0, 0%, 0%, 0.3);
+  --glass-border: 1px solid hsla(var(--hue), 20%, 25%, 0.5);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  min-height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--primary-hover);
+}
+
+/* Utilities */
+.glass-panel {
+  background: var(--bg-surface);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--border) 1px solid;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-heading);
+  font-weight: 500;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 4px 12px hsla(var(--hue), 80%, 60%, 0.3);
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px hsla(var(--hue), 80%, 60%, 0.4);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.btn-ghost:hover {
+  background: hsla(var(--hue), 20%, 50%, 0.1);
+  color: var(--text-primary);
+}
+
+.btn-icon {
+  padding: 8px;
+  border-radius: 50%;
+  aspect-ratio: 1;
+}
+
+.app-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+@media (max-width: 768px) {
+  .app-container {
+    padding: 16px;
+  }
+}
+
+/* Layout */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  margin-bottom: 32px;
+  position: sticky;
+  top: 16px;
+  z-index: 100;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
