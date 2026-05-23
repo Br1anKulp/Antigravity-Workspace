@@ -1,13 +1,18 @@
-import { useState, useEffect } from 'react'
-import { Wallet, Sun, Moon, LogOut } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { Wallet, Sun, Moon, LogOut, ChevronLeft, ChevronRight, LayoutDashboard, BarChart2 } from 'lucide-react'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, getDocs, setDoc, where, getDoc } from 'firebase/firestore'
 import { auth, db } from './firebase'
 
 import Dashboard from './components/Dashboard'
 import TransactionList from './components/TransactionList'
 import TransactionForm from './components/TransactionForm'
 import Auth from './components/Auth'
+import BudgetManager from './components/BudgetManager'
+import BudgetProgress from './components/BudgetProgress'
+import Insights from './components/Insights'
+import { requestNotificationPermission, checkUpcomingBills } from './utils/notifications'
+import { MAIN_CATEGORIES, CATEGORIES } from './config/categories'
 
 function App() {
   const [theme, setTheme] = useState(() => {
@@ -18,6 +23,15 @@ function App() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [transactions, setTransactions] = useState([])
+  const [budgets, setBudgets] = useState({})
+  const [loadingBudgets, setLoadingBudgets] = useState(true)
+  const [isBudgetManagerOpen, setIsBudgetManagerOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState('dashboard')
+  
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -28,29 +42,136 @@ function App() {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
       setLoading(false)
+      if (currentUser) {
+        requestNotificationPermission();
+      }
     })
     return () => unsubscribe()
   }, [])
 
+  const householdId = (user?.email === 'brian.k.kulp@gmail.com' || user?.email === 'familynflowers@protonmail.com') 
+    ? 'kulp-family' 
+    : user?.email;
+
   useEffect(() => {
     if (!user) {
       setTransactions([])
+      setBudgets({})
+      setLoadingBudgets(false)
       return
     }
 
-    const q = query(collection(db, 'transactions'), orderBy('date', 'desc'))
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    setLoadingBudgets(true)
+
+    // Household Migration: Ensure all transactions have a householdId
+    const migrateData = async () => {
+      try {
+        const allTxQuery = query(collection(db, 'transactions'));
+        const snapshot = await getDocs(allTxQuery);
+        snapshot.forEach(async (docSnap) => {
+          if (!docSnap.data().householdId) {
+            await updateDoc(doc(db, 'transactions', docSnap.id), { householdId: 'kulp-family' });
+          }
+        });
+      } catch (err) {
+        console.error("Migration error", err);
+      }
+    };
+    migrateData();
+
+    // Query transactions by householdId
+    const q = query(collection(db, 'transactions'), where('householdId', '==', householdId))
+    const unsubscribeTx = onSnapshot(q, (snapshot) => {
       const txs = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        // Convert Firestore Timestamp to ISO string for rendering if it exists
-        date: doc.data().date?.toDate ? doc.data().date.toDate().toISOString() : new Date().toISOString()
+        date: doc.data().date?.toDate ? doc.data().date.toDate().toISOString() : doc.data().date || new Date().toISOString()
       }))
+      txs.sort((a, b) => new Date(b.date) - new Date(a.date));
       setTransactions(txs)
     })
 
-    return () => unsubscribe()
-  }, [user])
+    const unsubscribeBudgets = onSnapshot(doc(db, 'budgets', `${householdId}-${selectedMonth}`), (docSnap) => {
+      if (docSnap.exists()) {
+        setBudgets(docSnap.data())
+      } else {
+        setBudgets({})
+      }
+      setLoadingBudgets(false)
+    })
+
+    return () => {
+      unsubscribeTx()
+      unsubscribeBudgets()
+    }
+  }, [user, selectedMonth, householdId])
+
+  // Fire bill due date notifications when budgets or transactions change
+  useEffect(() => {
+    if (user && Object.keys(budgets).length > 0) {
+      checkUpcomingBills(budgets, transactions, selectedMonth);
+    }
+  }, [budgets, transactions, selectedMonth, user])
+
+  // One-time budget path migration: copy from old bare selectedMonth path to new householdId-selectedMonth path
+  useEffect(() => {
+    if (!user || !householdId) return;
+    const migrateBudgetPath = async () => {
+      try {
+        const newRef = doc(db, 'budgets', `${householdId}-${selectedMonth}`);
+        const newSnap = await getDoc(newRef);
+        if (!newSnap.exists()) {
+          // Try to copy from old bare path
+          const oldRef = doc(db, 'budgets', selectedMonth);
+          const oldSnap = await getDoc(oldRef);
+          if (oldSnap.exists()) {
+            await setDoc(newRef, oldSnap.data());
+            console.log('Budget migrated from old path to household path.');
+          }
+        }
+      } catch (err) {
+        console.error('Budget path migration error:', err);
+      }
+    };
+    migrateBudgetPath();
+  }, [user, householdId, selectedMonth]);
+
+  // One-time migration to ensure all default categories exist in Firestore
+  useEffect(() => {
+    if (user && !loadingBudgets && Object.keys(budgets).length > 0 && !budgets._migrated_v2) {
+      const runMigration = async () => {
+        let modified = false;
+        let newBudgets = { ...budgets };
+
+        // Clean up any corrupted numeric keys from the previous bug
+        Object.keys(newBudgets).forEach(k => {
+          if (!isNaN(k) && k !== '') {
+            delete newBudgets[k];
+            modified = true;
+          }
+        });
+
+        MAIN_CATEGORIES.forEach(cat => {
+          if (!newBudgets[cat]) {
+            newBudgets[cat] = { limit: 0, subcategories: {} };
+            modified = true;
+          }
+        });
+
+        if (modified) {
+          newBudgets._migrated_v2 = true;
+          const cleanData = JSON.parse(JSON.stringify(newBudgets, (k, v) => v === undefined ? null : v));
+          try {
+            await setDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), cleanData);
+            console.log("Migration successful: Restored default categories.");
+          } catch (err) {
+            console.error("Migration failed:", err);
+          }
+        }
+      };
+      runMigration();
+    }
+  }, [user, budgets, selectedMonth, householdId, loadingBudgets]);
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light')
@@ -64,8 +185,13 @@ function App() {
         amount: newTx.amount,
         type: newTx.type,
         category: newTx.category,
+        subcategory: newTx.subcategory,
         user: user.email,
-        date: serverTimestamp() // Let Firestore handle the exact time
+        householdId,
+        date: newTx.date || new Date().toISOString(),
+        status: newTx.status || 'paid',
+        paymentMethod: newTx.paymentMethod || 'Checking Account',
+        notes: newTx.notes || ''
       })
     } catch (err) {
       console.error("Error adding document: ", err)
@@ -73,7 +199,86 @@ function App() {
     }
   }
 
-  if (loading) {
+  const handleUpdateTransaction = async (id, updatedTx) => {
+    if (!user) return
+    try {
+      const txRef = doc(db, 'transactions', id);
+      await updateDoc(txRef, {
+        title: updatedTx.title,
+        amount: updatedTx.amount,
+        type: updatedTx.type,
+        category: updatedTx.category,
+        subcategory: updatedTx.subcategory,
+        date: updatedTx.date || new Date().toISOString(),
+        status: updatedTx.status || 'paid',
+        paymentMethod: updatedTx.paymentMethod || 'Checking Account'
+      });
+    } catch (err) {
+      console.error("Error updating document: ", err)
+      alert("Failed to update transaction.")
+    }
+  }
+
+  const handleDeleteTransaction = async (id) => {
+    if (!user || !window.confirm("Are you sure you want to delete this transaction?")) return;
+    try {
+      await deleteDoc(doc(db, 'transactions', id));
+    } catch (err) {
+      console.error("Error deleting document: ", err);
+      alert("Failed to delete transaction.");
+    }
+  }
+
+  const handlePrevMonth = () => {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const d = new Date(year, month - 2, 1);
+    setSelectedMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+
+  const handleNextMonth = () => {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const d = new Date(year, month, 1);
+    setSelectedMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  }
+
+  const filteredTransactions = useMemo(() => {
+    return transactions.filter(t => t.date && t.date.startsWith(selectedMonth));
+  }, [transactions, selectedMonth]);
+
+  const displayMonthName = new Date(selectedMonth + "-02").toLocaleString('default', { month: 'long', year: 'numeric' });
+
+  const categoriesConfig = useMemo(() => {
+    const config = {};
+    
+    // First populate with default categories and their default subcategories
+    MAIN_CATEGORIES.forEach(c => {
+      config[c] = [...(CATEGORIES[c] || [])];
+    });
+
+    // Then, if budgets exist, merge database categories and their custom subcategories
+    if (Object.keys(budgets).length > 0) {
+      Object.keys(budgets).forEach(c => {
+        if (c === '_migrated_v2') return; // Ignore migration flag
+        
+        const dbSubcategories = Object.keys(budgets[c]?.subcategories || {});
+        
+        if (!config[c]) {
+          // Custom category
+          config[c] = dbSubcategories;
+        } else {
+          // Default category, merge default subcategories and database subcategories
+          const merged = new Set([...config[c], ...dbSubcategories]);
+          config[c] = Array.from(merged);
+        }
+      });
+    }
+
+    return config;
+  }, [budgets]);
+
+  const customCategories = Object.keys(categoriesConfig);
+
+  if (loading || (user && loadingBudgets)) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Loading...</div>
   }
 
@@ -110,9 +315,85 @@ function App() {
       </header>
 
       <main>
-        <Dashboard transactions={transactions} />
-        <TransactionForm onAdd={handleAddTransaction} />
-        <TransactionList transactions={transactions} />
+        <div className="glass-panel" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '12px', marginBottom: '24px', gap: '16px' }}>
+          <button className="btn btn-ghost btn-icon" onClick={handlePrevMonth}>
+            <ChevronLeft size={20} />
+          </button>
+          <h2 style={{ margin: 0, minWidth: '180px', textAlign: 'center', fontSize: '1.2rem', fontWeight: '600' }}>
+            {displayMonthName}
+          </h2>
+          <button className="btn btn-ghost btn-icon" onClick={handleNextMonth}>
+            <ChevronRight size={20} />
+          </button>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="glass-panel" style={{ display: 'flex', gap: '8px', padding: '8px', marginBottom: '24px' }}>
+          <button
+            className={`btn ${activeTab === 'dashboard' ? 'btn-primary' : 'btn-ghost'}`}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+            onClick={() => setActiveTab('dashboard')}
+          >
+            <LayoutDashboard size={16} /> Dashboard
+          </button>
+          <button
+            className={`btn ${activeTab === 'insights' ? 'btn-primary' : 'btn-ghost'}`}
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+            onClick={() => setActiveTab('insights')}
+          >
+            <BarChart2 size={16} /> Insights
+          </button>
+        </div>
+
+        {activeTab === 'insights' ? (
+          <Insights
+            transactions={transactions}
+            budgets={budgets}
+            customCategories={customCategories}
+          />
+        ) : (
+          <>
+            <Dashboard transactions={filteredTransactions} />
+        
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px', alignItems: 'flex-start' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px', alignItems: 'flex-start' }}>
+            
+            {/* Left Column: Categories */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <BudgetProgress 
+                budgets={budgets} 
+                transactions={filteredTransactions} 
+                user={user} 
+                householdId={householdId}
+                customCategories={customCategories} 
+                selectedMonth={selectedMonth}
+                onManageClick={() => setIsBudgetManagerOpen(true)}
+              />
+              <BudgetManager 
+                user={user} 
+                budgets={budgets} 
+                householdId={householdId}
+                customCategories={customCategories}
+                selectedMonth={selectedMonth}
+                isOpen={isBudgetManagerOpen}
+                onClose={() => setIsBudgetManagerOpen(false)}
+              />
+            </div>
+
+            {/* Right Column: Transactions */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              <TransactionForm onAdd={handleAddTransaction} onUpdate={handleUpdateTransaction} categoriesConfig={categoriesConfig} customCategories={customCategories} />
+            <TransactionList 
+              transactions={filteredTransactions} 
+              onDelete={handleDeleteTransaction}
+              onEditRequest={(tx) => document.dispatchEvent(new CustomEvent('edit-transaction', { detail: tx }))}
+              categories={customCategories}
+              selectedMonth={selectedMonth}
+            />
+            </div>
+          </div>
+        </div>
+        </>)}
       </main>
     </div>
   )

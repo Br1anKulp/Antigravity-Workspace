@@ -2,60 +2,64 @@
 
 :root {
   /* Colors */
-  --hue: 250;
+  --hue: 220;
   
   /* Light Theme Variables */
-  --bg-base: hsl(var(--hue), 20%, 98%);
-  --bg-surface: hsla(var(--hue), 20%, 100%, 0.7);
+  --bg-base: hsl(var(--hue), 20%, 97%);
+  --bg-surface: hsla(var(--hue), 20%, 100%, 0.85);
   --bg-surface-solid: hsl(var(--hue), 20%, 100%);
-  --text-primary: hsl(var(--hue), 30%, 15%);
-  --text-secondary: hsl(var(--hue), 15%, 45%);
-  --border: hsla(var(--hue), 20%, 85%, 0.5);
+  --text-primary: hsl(var(--hue), 40%, 15%);
+  --text-secondary: hsl(var(--hue), 20%, 45%);
+  --border: hsla(var(--hue), 20%, 85%, 0.7);
   
-  --primary: hsl(var(--hue), 80%, 60%);
-  --primary-hover: hsl(var(--hue), 80%, 55%);
-  --primary-bg: hsla(var(--hue), 80%, 60%, 0.1);
+  --primary: hsl(var(--hue), 85%, 55%);
+  --primary-hover: hsl(var(--hue), 85%, 50%);
+  --primary-bg: hsla(var(--hue), 85%, 55%, 0.1);
   
   --success: hsl(150, 80%, 40%);
   --success-bg: hsla(150, 80%, 40%, 0.1);
-  --danger: hsl(350, 80%, 55%);
-  --danger-bg: hsla(350, 80%, 55%, 0.1);
+  --warning: hsl(40, 90%, 50%);
+  --warning-bg: hsla(40, 90%, 50%, 0.1);
+  --danger: hsl(10, 85%, 55%);
+  --danger-bg: hsla(10, 85%, 55%, 0.1);
 
   /* Typography */
   --font-heading: 'Outfit', sans-serif;
   --font-body: 'Inter', sans-serif;
 
   /* Shadows & Glass */
-  --shadow-sm: 0 2px 8px hsla(var(--hue), 30%, 15%, 0.05);
-  --shadow-md: 0 8px 24px hsla(var(--hue), 30%, 15%, 0.08);
-  --glass-blur: blur(12px);
-  --glass-border: 1px solid hsla(var(--hue), 20%, 100%, 0.5);
+  --shadow-sm: 0 4px 12px hsla(var(--hue), 40%, 15%, 0.05);
+  --shadow-md: 0 12px 32px hsla(var(--hue), 40%, 15%, 0.08);
+  --glass-blur: blur(16px);
+  --glass-border: 1px solid hsla(var(--hue), 20%, 100%, 0.6);
   
-  --radius-sm: 8px;
-  --radius-md: 16px;
-  --radius-lg: 24px;
+  --radius-sm: 10px;
+  --radius-md: 20px;
+  --radius-lg: 32px;
 }
 
 [data-theme='dark'] {
-  --bg-base: hsl(var(--hue), 15%, 8%);
-  --bg-surface: hsla(var(--hue), 15%, 12%, 0.7);
-  --bg-surface-solid: hsl(var(--hue), 15%, 12%);
-  --text-primary: hsl(var(--hue), 20%, 95%);
-  --text-secondary: hsl(var(--hue), 15%, 65%);
-  --border: hsla(var(--hue), 20%, 25%, 0.5);
+  --bg-base: hsl(var(--hue), 15%, 6%);
+  --bg-surface: hsla(var(--hue), 15%, 11%, 0.75);
+  --bg-surface-solid: hsl(var(--hue), 15%, 11%);
+  --text-primary: hsl(var(--hue), 20%, 98%);
+  --text-secondary: hsl(var(--hue), 15%, 60%);
+  --border: hsla(var(--hue), 20%, 25%, 0.6);
   
-  --primary: hsl(var(--hue), 80%, 65%);
-  --primary-hover: hsl(var(--hue), 80%, 70%);
-  --primary-bg: hsla(var(--hue), 80%, 65%, 0.15);
+  --primary: hsl(var(--hue), 90%, 65%);
+  --primary-hover: hsl(var(--hue), 90%, 72%);
+  --primary-bg: hsla(var(--hue), 90%, 65%, 0.15);
   
   --success: hsl(150, 70%, 50%);
   --success-bg: hsla(150, 70%, 50%, 0.15);
-  --danger: hsl(350, 80%, 65%);
-  --danger-bg: hsla(350, 80%, 65%, 0.15);
+  --warning: hsl(40, 95%, 60%);
+  --warning-bg: hsla(40, 95%, 60%, 0.15);
+  --danger: hsl(10, 90%, 65%);
+  --danger-bg: hsla(10, 90%, 65%, 0.15);
 
-  --shadow-sm: 0 2px 8px hsla(0, 0%, 0%, 0.2);
-  --shadow-md: 0 8px 24px hsla(0, 0%, 0%, 0.3);
-  --glass-border: 1px solid hsla(var(--hue), 20%, 25%, 0.5);
+  --shadow-sm: 0 4px 12px hsla(0, 0%, 0%, 0.3);
+  --shadow-md: 0 12px 32px hsla(0, 0%, 0%, 0.4);
+  --glass-border: 1px solid hsla(var(--hue), 20%, 25%, 0.6);
 }
 
 * {
