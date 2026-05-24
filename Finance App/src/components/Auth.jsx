@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../firebase';
-import { Wallet } from 'lucide-react';
 
 export default function Auth() {
   const [email, setEmail] = useState('');
@@ -27,8 +26,8 @@ export default function Auth() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
       <div className="glass-panel" style={{ padding: '40px', width: '100%', maxWidth: '400px', textAlign: 'center' }}>
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px', color: 'var(--primary)' }}>
-          <Wallet size={48} />
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+          <img src="/logo.png" alt="Flow Logo" style={{ width: '64px', height: '64px', borderRadius: '12px', objectFit: 'cover', boxShadow: '0 8px 30px rgba(0,0,0,0.3)' }} />
         </div>
         <h1 style={{ fontSize: '2rem', marginBottom: '8px' }}>Flow</h1>
         <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>Sign in to manage your budget.</p>

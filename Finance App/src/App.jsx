@@ -272,9 +272,9 @@ function App() {
   return (
     <div className="app-container">
       <header className="header glass-panel">
-        <div className="brand">
-          <Wallet size={28} />
-          <span>Flow</span>
+        <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <img src="/logo.png" alt="Flow" style={{ width: '32px', height: '32px', borderRadius: '8px', objectFit: 'cover' }} />
+          <span style={{ fontWeight: '700', fontSize: '1.25rem', letterSpacing: '0.5px' }}>Flow</span>
         </div>
         <div className="header-actions">
           <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginRight: '8px', display: 'none' }}>
