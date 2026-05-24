@@ -246,26 +246,13 @@ function App() {
   const categoriesConfig = useMemo(() => {
     const config = {};
     
-    // First populate with default categories and their default subcategories
-    MAIN_CATEGORIES.forEach(c => {
-      config[c] = [...(CATEGORIES[c] || [])];
-    });
-
-    // Then, if budgets exist, merge database categories and their custom subcategories
-    if (Object.keys(budgets).length > 0) {
+    // Pull categories and subcategories ONLY from your active budget document
+    if (budgets && Object.keys(budgets).length > 0) {
       Object.keys(budgets).forEach(c => {
         if (c === '_migrated_v2') return; // Ignore migration flag
         
         const dbSubcategories = Object.keys(budgets[c]?.subcategories || {});
-        
-        if (!config[c]) {
-          // Custom category
-          config[c] = dbSubcategories;
-        } else {
-          // Default category, merge default subcategories and database subcategories
-          const merged = new Set([...config[c], ...dbSubcategories]);
-          config[c] = Array.from(merged);
-        }
+        config[c] = dbSubcategories;
       });
     }
 

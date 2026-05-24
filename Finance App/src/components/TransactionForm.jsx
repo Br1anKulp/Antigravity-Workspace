@@ -246,6 +246,11 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                   <option value="">Select Category</option>
                   {customCategories.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
+                {customCategories.length === 0 && (
+                  <span style={{ display: 'block', marginTop: '6px', fontSize: '0.8rem', color: 'var(--warning)', fontWeight: '500' }}>
+                    ⚠️ No categories configured yet. Please set up a budget first.
+                  </span>
+                )}
               </div>
               
               {!isSplit ? (
