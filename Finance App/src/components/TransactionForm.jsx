@@ -8,7 +8,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
   const [formData, setFormData] = useState({
     title: '',
     amount: '',
-    category: customCategories[0] || '',
+    category: '', // Start empty to show placeholder
     subcategory: '', // Start empty to show placeholder
     type: 'expense',
     isRecurring: false,
@@ -68,7 +68,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
     setFormData({ 
       title: '', 
       amount: '', 
-      category: customCategories[0] || '', 
+      category: '', // Start empty to show placeholder
       subcategory: '', // Start empty to show placeholder
       isRecurring: false,
       dates: [new Date().toISOString().split('T')[0]],
@@ -238,9 +238,11 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                 <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Main Category</label>
                 <select 
                   value={formData.category}
+                  required
                   onChange={e => setFormData({ ...formData, category: e.target.value })}
                   style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem' }}
                 >
+                  <option value="" disabled>Select Category</option>
                   {customCategories.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
