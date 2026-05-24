@@ -83,8 +83,13 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
       })
   })
 
-  // Always show all main categories, even if budget limit is 0 (so the user knows they exist and can see spending)
-  const activeBudgets = customCategories
+  // Only display categories that have an active budget limit > 0 OR have actual transaction spending > 0
+  const activeBudgets = customCategories.filter(cat => {
+    const catData = budgets && budgets[cat] ? budgets[cat] : { limit: 0, dueDate: '', subcategories: {} };
+    const spent = categorySpent[cat]?.total || 0;
+    const limit = calculateCatLimit(catData);
+    return limit > 0 || spent > 0;
+  });
 
   const renderDueDate = (days) => {
     if (!days) return null;
@@ -303,7 +308,12 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
         </button>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {activeBudgets.map(cat => {
+        {activeBudgets.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '24px 16px', color: 'var(--text-secondary)', background: 'var(--bg-base)', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.95rem' }}>
+            No active budgets or spending for this month. Click the gear icon above to set budget limits!
+          </div>
+        ) : (
+          activeBudgets.map(cat => {
           const catData = budgets && budgets[cat] ? budgets[cat] : { limit: 0, dueDate: '', subcategories: {} };
           const spent = categorySpent[cat].total
           const subcategories = catData.subcategories || {}
@@ -586,7 +596,7 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
 
             </div>
           )
-        })}
+        }))}
       </div>
     </div>
   )

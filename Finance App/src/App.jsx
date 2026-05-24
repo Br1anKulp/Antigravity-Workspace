@@ -151,12 +151,8 @@ function App() {
           }
         });
 
-        MAIN_CATEGORIES.forEach(cat => {
-          if (!newBudgets[cat]) {
-            newBudgets[cat] = { limit: 0, subcategories: {} };
-            modified = true;
-          }
-        });
+        // No longer forcefully adding default categories to Firestore to allow user deletion
+
 
         if (modified) {
           newBudgets._migrated_v2 = true;
