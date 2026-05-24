@@ -243,7 +243,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                   onChange={e => setFormData({ ...formData, category: e.target.value })}
                   style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem' }}
                 >
-                  <option value="" disabled>Select Category</option>
+                  <option value="">Select Category</option>
                   {customCategories.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
@@ -281,7 +281,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                     }}
                     style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem', appearance: 'auto' }}
                   >
-                    <option value="" disabled>Select Subcategory</option>
+                    <option value="">Select Subcategory</option>
                     {(categoriesConfig[formData.category] || []).map(sub => (
                       <option key={sub} value={sub}>{sub}</option>
                     ))}
@@ -324,7 +324,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                             }}
                             style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.95rem', appearance: 'auto' }}
                           >
-                            <option value="" disabled>Select Subcategory</option>
+                            <option value="">Select Subcategory</option>
                             {(categoriesConfig[formData.category] || []).map(sub => (
                               <option key={sub} value={sub}>{sub}</option>
                             ))}
