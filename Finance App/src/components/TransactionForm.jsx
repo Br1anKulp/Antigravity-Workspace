@@ -9,7 +9,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
     title: '',
     amount: '',
     category: customCategories[0] || '',
-    subcategory: (categoriesConfig[customCategories[0]] || [])[0] || '',
+    subcategory: '', // Start empty to show placeholder
     type: 'expense',
     isRecurring: false,
     dates: [new Date().toISOString().split('T')[0]],
@@ -22,13 +22,13 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
   const [isSplit, setIsSplit] = useState(false)
   const [splits, setSplits] = useState([{ subcategory: '', amount: '' }])
 
-  // Update subcategory automatically if category changes
+  // Clear subcategory when category changes so user must select one
   useEffect(() => {
     setFormData(prev => ({
       ...prev,
-      subcategory: (categoriesConfig[prev.category] || [])[0] || ''
+      subcategory: ''
     }))
-  }, [formData.category, categoriesConfig])
+  }, [formData.category])
 
   // Listen for edit requests from the transaction list
   useEffect(() => {
@@ -69,7 +69,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
       title: '', 
       amount: '', 
       category: customCategories[0] || '', 
-      subcategory: (categoriesConfig[customCategories[0]] || [])[0] || '', 
+      subcategory: '', // Start empty to show placeholder
       isRecurring: false,
       dates: [new Date().toISOString().split('T')[0]],
       type: 'expense',
@@ -262,17 +262,30 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                       Split transaction?
                     </button>
                   </div>
-                  <input 
-                    type="text"
-                    list="subcategory-options"
+                  <select 
                     value={formData.subcategory}
-                    onChange={e => setFormData({ ...formData, subcategory: e.target.value })}
-                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem' }}
-                    placeholder="Select or type new..."
-                  />
-                  <datalist id="subcategory-options">
-                    {(categoriesConfig[formData.category] || []).map(sub => <option key={sub} value={sub} />)}
-                  </datalist>
+                    required
+                    onChange={e => {
+                      if (e.target.value === '__custom__') {
+                        const custom = prompt('Enter custom subcategory:');
+                        if (custom) {
+                          setFormData({ ...formData, subcategory: custom });
+                        }
+                      } else {
+                        setFormData({ ...formData, subcategory: e.target.value });
+                      }
+                    }}
+                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem', appearance: 'auto' }}
+                  >
+                    <option value="" disabled>Select Subcategory</option>
+                    {(categoriesConfig[formData.category] || []).map(sub => (
+                      <option key={sub} value={sub}>{sub}</option>
+                    ))}
+                    {formData.subcategory && !(categoriesConfig[formData.category] || []).includes(formData.subcategory) && formData.subcategory !== '__custom__' && (
+                      <option value={formData.subcategory}>{formData.subcategory}</option>
+                    )}
+                    <option value="__custom__">+ Add Custom...</option>
+                  </select>
                 </div>
               ) : (
                 <div style={{ gridColumn: 'span 2', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)' }}>
@@ -291,14 +304,30 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                     {splits.map((s, idx) => (
                       <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                         <div style={{ flex: 2, position: 'relative' }}>
-                          <input 
-                            type="text"
-                            list="subcategory-options"
+                          <select 
                             value={s.subcategory}
-                            onChange={e => handleSplitChange(idx, 'subcategory', e.target.value)}
-                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)' }}
-                            placeholder="Subcategory"
-                          />
+                            required
+                            onChange={e => {
+                              if (e.target.value === '__custom__') {
+                                const custom = prompt('Enter custom subcategory:');
+                                if (custom) {
+                                  handleSplitChange(idx, 'subcategory', custom);
+                                }
+                              } else {
+                                handleSplitChange(idx, 'subcategory', e.target.value);
+                              }
+                            }}
+                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.95rem', appearance: 'auto' }}
+                          >
+                            <option value="" disabled>Select Subcategory</option>
+                            {(categoriesConfig[formData.category] || []).map(sub => (
+                              <option key={sub} value={sub}>{sub}</option>
+                            ))}
+                            {s.subcategory && !(categoriesConfig[formData.category] || []).includes(s.subcategory) && s.subcategory !== '__custom__' && (
+                              <option value={s.subcategory}>{s.subcategory}</option>
+                            )}
+                            <option value="__custom__">+ Add Custom...</option>
+                          </select>
                         </div>
                         <input 
                           type="number"
@@ -322,9 +351,6 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                         )}
                       </div>
                     ))}
-                    <datalist id="subcategory-options">
-                      {(categoriesConfig[formData.category] || []).map(sub => <option key={sub} value={sub} />)}
-                    </datalist>
                   </div>
                   
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
