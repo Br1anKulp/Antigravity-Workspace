@@ -147,7 +147,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
         <button className="btn btn-ghost" onClick={handleCancel}>Cancel</button>
       </div>
 
-      <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '16px' }}>
+      <form onSubmit={handleSubmit} autoComplete="off" style={{ display: 'grid', gap: '16px' }}>
         <div style={{ display: 'flex', gap: '12px' }}>
           <button 
             type="button"
@@ -239,6 +239,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                 <select 
                   value={formData.category}
                   required
+                  autoComplete="off"
                   onChange={e => setFormData({ ...formData, category: e.target.value })}
                   style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem' }}
                 >
@@ -267,6 +268,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                   <select 
                     value={formData.subcategory}
                     required
+                    autoComplete="off"
                     onChange={e => {
                       if (e.target.value === '__custom__') {
                         const custom = prompt('Enter custom subcategory:');
@@ -309,6 +311,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                           <select 
                             value={s.subcategory}
                             required
+                            autoComplete="off"
                             onChange={e => {
                               if (e.target.value === '__custom__') {
                                 const custom = prompt('Enter custom subcategory:');
