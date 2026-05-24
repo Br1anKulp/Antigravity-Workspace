@@ -11,14 +11,6 @@ export default function BudgetManager({ user, budgets: globalBudgets, isOpen, on
   useEffect(() => {
     if (isOpen) {
       let initial = JSON.parse(JSON.stringify(globalBudgets || {}));
-      
-      // Ensure all default categories are listed in the editor so the user can easily set budgets for them
-      MAIN_CATEGORIES.forEach(c => {
-        if (!initial[c]) {
-          initial[c] = { limit: 0, dueDate: '', subcategories: {} };
-        }
-      });
-      
       setBudgets(initial);
     }
   }, [isOpen, globalBudgets]);
@@ -27,48 +19,33 @@ export default function BudgetManager({ user, budgets: globalBudgets, isOpen, on
     if (!user) return;
     setSaving(true);
     try {
-      // Filter out any default categories that have no limits, no due dates, and no active subcategories to keep Firestore clean
-      const cleanedBudgets = {};
+      const sanitizedBudgets = {};
       Object.keys(budgets).forEach(cat => {
-        if (cat === '_migrated_v2') {
-          cleanedBudgets[cat] = budgets[cat];
-          return;
-        }
-
+        if (cat === '_migrated_v2') return; // Ignore migration flag to keep database clean
+        
         const catData = budgets[cat] || {};
-        const hasLimit = (parseFloat(catData.limit) || 0) > 0;
-        const hasDueDate = !!catData.dueDate;
-
-        // Clean subcategories: only keep those with budget limits or due dates
         const subcategories = catData.subcategories || {};
         const activeSubcategories = {};
-        let hasActiveSubcat = false;
-
+        
         Object.keys(subcategories).forEach(sub => {
           const subData = typeof subcategories[sub] === 'object'
             ? subcategories[sub]
             : { limit: subcategories[sub] || 0, dueDate: '' };
-
-          const subLimit = parseFloat(subData.limit) || 0;
-          if (subLimit > 0 || subData.dueDate) {
-            activeSubcategories[sub] = subData;
-            hasActiveSubcat = true;
-          }
-        });
-
-        // Always keep custom categories that the user created
-        // For default categories, only save them if they have a non-zero limit, active subcategories, or a due date
-        const isDefault = MAIN_CATEGORIES.includes(cat);
-        if (!isDefault || hasLimit || hasDueDate || hasActiveSubcat) {
-          cleanedBudgets[cat] = {
-            limit: catData.limit || 0,
-            dueDate: catData.dueDate || '',
-            subcategories: activeSubcategories
+            
+          activeSubcategories[sub] = {
+            limit: parseFloat(subData.limit) || 0,
+            dueDate: subData.dueDate || ''
           };
-        }
+        });
+        
+        sanitizedBudgets[cat] = {
+          limit: parseFloat(catData.limit) || 0,
+          dueDate: catData.dueDate || '',
+          subcategories: activeSubcategories
+        };
       });
 
-      const cleanData = JSON.parse(JSON.stringify(cleanedBudgets, (k, v) => v === undefined ? null : v));
+      const cleanData = JSON.parse(JSON.stringify(sanitizedBudgets, (k, v) => v === undefined ? null : v));
       await setDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), cleanData);
       onClose();
     } catch (err) {
