@@ -9,9 +9,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
-        name: 'Flow Budget',
-        short_name: 'Flow',
-        description: 'A beautiful, secure way to manage your budget.',
+        name: 'Good Steward',
+        short_name: 'Good Steward',
+        description: 'A beautiful, secure way to manage your family budget.',
         theme_color: '#aa3bff',
         background_color: '#16171d',
         display: 'standalone',

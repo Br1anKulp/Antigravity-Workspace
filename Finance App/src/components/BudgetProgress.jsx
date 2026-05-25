@@ -1,101 +1,236 @@
-import React, { useState } from 'react'
-import { Calendar, ChevronDown, ChevronRight, Plus, Pencil, Save, X, Settings, Trash2 } from 'lucide-react'
-import { doc, setDoc, getDoc, updateDoc, deleteField, collection, query, where, getDocs } from 'firebase/firestore'
+import React, { useState, useEffect, useCallback } from 'react'
+import { Calendar, ChevronDown, ChevronRight, Plus, Pencil, Save, Trash2, GripVertical, Copy } from 'lucide-react'
+import { doc, setDoc, getDoc, updateDoc, deleteField, collection, getDocs, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
-export default function BudgetProgress({ transactions, budgets, user, householdId, customCategories, onManageClick, selectedMonth }) {
+// ─── Sortable Category Row ────────────────────────────────────────────────────
+function SortableCategoryRow({ id, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, data: { type: 'cat' } })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    position: 'relative',
+    zIndex: isDragging ? 10 : 'auto',
+  }
+  return (
+    <div ref={setNodeRef} style={style}>
+      {children({ dragHandleProps: { ...attributes, ...listeners } })}
+    </div>
+  )
+}
+
+// ─── Sortable Subcategory Row ─────────────────────────────────────────────────
+function SortableSubRow({ id, cat, children }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, data: { type: 'sub', cat } })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
+  return (
+    <div ref={setNodeRef} style={style}>
+      {children({ dragHandleProps: { ...attributes, ...listeners } })}
+    </div>
+  )
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+export default function BudgetProgress({ transactions, budgets, user, householdId, customCategories, selectedMonth }) {
   const [expandedCategories, setExpandedCategories] = useState({})
-  
+
+  // Ordered lists (derived from budgets._categoryOrder / ._subcategoryOrder)
+  const [catOrder, setCatOrder] = useState([])
+  const [subOrders, setSubOrders] = useState({}) // { [cat]: [sub1, sub2, ...] }
+
   // Add subcat states
   const [addingSubcatTo, setAddingSubcatTo] = useState(null)
   const [newSubName, setNewSubName] = useState('')
   const [newSubLimit, setNewSubLimit] = useState('')
   const [newSubDue, setNewSubDue] = useState('')
-  
+
   // Edit states
   const [editingCat, setEditingCat] = useState(null)
-  const [editingSubcat, setEditingSubcat] = useState(null) // {cat, oldName}
+  const [editingSubcat, setEditingSubcat] = useState(null)
   const [editLimit, setEditLimit] = useState('')
   const [editDue, setEditDue] = useState('')
   const [editName, setEditName] = useState('')
-  
+
   const [isSaving, setIsSaving] = useState(false)
   const [isCopying, setIsCopying] = useState(false)
+  const [addingNewCat, setAddingNewCat] = useState(false)
+  const [newCatName, setNewCatName] = useState('')
+  const [newCatDue, setNewCatDue] = useState('')
+  const [activeDragId, setActiveDragId] = useState(null)
+  const [activeDragType, setActiveDragType] = useState(null) // 'cat' | 'sub'
+  const [activeDragCat, setActiveDragCat] = useState(null)
 
-  const getPrevMonth = (curr) => {
-    let [year, month] = curr.split('-').map(Number);
-    if (month === 1) {
-      year -= 1;
-      month = 12;
+  // ── Sync order from budgets ──────────────────────────────────────────────
+  useEffect(() => {
+    const storedOrder = budgets?._categoryOrder
+    const allCats = customCategories.filter(c => c !== '_categoryOrder' && c !== '_subcategoryOrder')
+
+    if (storedOrder && Array.isArray(storedOrder)) {
+      // Merge stored order with any newly added categories
+      const ordered = [
+        ...storedOrder.filter(c => allCats.includes(c)),
+        ...allCats.filter(c => !storedOrder.includes(c)),
+      ]
+      setCatOrder(ordered)
     } else {
-      month -= 1;
+      setCatOrder(allCats)
     }
-    return `${year}-${String(month).padStart(2, '0')}`;
+
+    // Sub orders — read from _subcategoryOrder (matches saveSubOrder write path)
+    const newSubOrders = {}
+    allCats.forEach(cat => {
+      const subs = Object.keys(budgets?.[cat]?.subcategories || {}).filter(s => s !== '_order')
+      const storedSubOrder = budgets?.[cat]?._subcategoryOrder
+      if (storedSubOrder && Array.isArray(storedSubOrder)) {
+        newSubOrders[cat] = [
+          ...storedSubOrder.filter(s => subs.includes(s)),
+          ...subs.filter(s => !storedSubOrder.includes(s)),
+        ]
+      } else {
+        newSubOrders[cat] = subs
+      }
+    })
+    setSubOrders(newSubOrders)
+  }, [budgets, customCategories])
+
+  // ── Custom collision: only match items of the same type ──────────────────
+  const typeSafeCollision = useCallback((args) => {
+    const activeId = String(args.active.id)
+    const isSubDrag = activeId.includes('::')
+    const filtered = {
+      ...args,
+      droppableContainers: args.droppableContainers.filter(
+        ({ id }) => String(id).includes('::') === isSubDrag
+      ),
+    }
+    return closestCenter(filtered)
+  }, [])
+
+  // ── DnD sensors ─────────────────────────────────────────────────────────
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+  )
+
+  // ── Persist category order ───────────────────────────────────────────────
+  const saveCatOrder = useCallback(async (newOrder) => {
+    if (!user) return
+    try {
+      await updateDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), {
+        _categoryOrder: newOrder,
+      })
+    } catch (err) {
+      console.error('Failed to save category order:', err)
+    }
+  }, [user, householdId, selectedMonth])
+
+  // ── Persist subcategory order ────────────────────────────────────────────
+  const saveSubOrder = useCallback(async (cat, newOrder) => {
+    if (!user) return
+    try {
+      await updateDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), {
+        [`${cat}._subcategoryOrder`]: newOrder,
+      })
+    } catch (err) {
+      console.error('Failed to save subcategory order:', err)
+    }
+  }, [user, householdId, selectedMonth])
+
+  // ── DnD handlers ────────────────────────────────────────────────────────
+  const handleDragStart = ({ active }) => {
+    setActiveDragId(active.id)
+    setActiveDragType(active.data.current?.type)
+    setActiveDragCat(active.data.current?.cat)
+  }
+
+  const handleDragEnd = ({ active, over }) => {
+    setActiveDragId(null)
+    setActiveDragType(null)
+    setActiveDragCat(null)
+    if (!over || active.id === over.id) return
+
+    const type = active.data.current?.type
+    if (type === 'cat') {
+      const oldIdx = catOrder.indexOf(active.id)
+      const newIdx = catOrder.indexOf(over.id)
+      if (oldIdx === -1 || newIdx === -1) return
+      const newOrder = arrayMove(catOrder, oldIdx, newIdx)
+      setCatOrder(newOrder)
+      saveCatOrder(newOrder)
+    } else if (type === 'sub') {
+      const cat = active.data.current?.cat
+      const subs = subOrders[cat] || []
+      const oldIdx = subs.indexOf(active.id.replace(`${cat}::`, ''))
+      const newIdx = subs.indexOf(over.id.replace(`${cat}::`, ''))
+      if (oldIdx === -1 || newIdx === -1) return
+      const newOrder = arrayMove(subs, oldIdx, newIdx)
+      setSubOrders(prev => ({ ...prev, [cat]: newOrder }))
+      saveSubOrder(cat, newOrder)
+    }
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  const getPrevMonth = (curr) => {
+    let [year, month] = curr.split('-').map(Number)
+    if (month === 1) { year -= 1; month = 12 } else { month -= 1 }
+    return `${year}-${String(month).padStart(2, '0')}`
   }
 
   const handleCopyPreviousMonth = async () => {
-    if (!user) return;
-    setIsCopying(true);
+    if (!user) return
+    setIsCopying(true)
     try {
-      const prevMonth = getPrevMonth(selectedMonth);
-      const prevDocRef = doc(db, 'budgets', `${householdId}-${prevMonth}`);
-      const prevDocSnap = await getDoc(prevDocRef);
+      const prevMonth = getPrevMonth(selectedMonth)
+      const prevDocSnap = await getDoc(doc(db, 'budgets', `${householdId}-${prevMonth}`))
       if (prevDocSnap.exists()) {
-        await setDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), prevDocSnap.data());
+        await setDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), prevDocSnap.data())
       } else {
-        alert("No previous budget found to copy.");
+        alert('No previous budget found to copy.')
       }
     } catch (err) {
-      console.error(err);
-      alert("Failed to copy budget.");
+      console.error(err)
+      alert('Failed to copy budget.')
     } finally {
-      setIsCopying(false);
+      setIsCopying(false)
     }
   }
 
   const calculateCatLimit = (catData) => {
-    if (!catData?.subcategories) return 0;
-    return Object.values(catData.subcategories).reduce((sum, sub) => sum + (parseFloat(sub.limit) || 0), 0);
-  };
+    if (!catData?.subcategories) return 0
+    return Object.entries(catData.subcategories)
+      .filter(([k]) => k !== '_order')
+      .reduce((sum, [, sub]) => sum + (parseFloat(sub.limit) || 0), 0)
+  }
 
   const toggleCategory = (cat) => {
     setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }))
   }
 
-  // Calculate spent per category and subcategory
-  const categorySpent = {}
-  customCategories.forEach(cat => {
-    categorySpent[cat] = { total: 0, subs: {} }
-    
-    transactions
-      .filter(t => t.type === 'expense' && t.category === cat)
-      .forEach(t => {
-        categorySpent[cat].total += parseFloat(t.amount)
-        if (t.splits && t.splits.length > 0) {
-          t.splits.forEach(split => {
-            if (split.subcategory) {
-              categorySpent[cat].subs[split.subcategory] = (categorySpent[cat].subs[split.subcategory] || 0) + parseFloat(split.amount)
-            }
-          })
-        } else if (t.subcategory) {
-          categorySpent[cat].subs[t.subcategory] = (categorySpent[cat].subs[t.subcategory] || 0) + parseFloat(t.amount)
-        }
-      })
-  })
-
-  // Only display categories that have an active budget limit > 0 OR have actual transaction spending > 0
-  const activeBudgets = customCategories.filter(cat => {
-    const catData = budgets && budgets[cat] ? budgets[cat] : { limit: 0, dueDate: '', subcategories: {} };
-    const spent = categorySpent[cat]?.total || 0;
-    const limit = calculateCatLimit(catData);
-    return limit > 0 || spent > 0;
-  });
-
   const renderDueDate = (days) => {
-    if (!days) return null;
-    const dayArray = String(days).split(',').map(d => d.trim()).filter(d => !isNaN(d) && d !== '');
-    if (dayArray.length === 0) return null;
-    
+    if (!days) return null
+    const dayArray = String(days).split(',').map(d => d.trim()).filter(d => !isNaN(d) && d !== '')
+    if (dayArray.length === 0) return null
     return (
       <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
         {dayArray.map((day, idx) => (
@@ -108,496 +243,512 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
   }
 
   const getOrdinal = (n) => {
-    const s = ["th", "st", "nd", "rd"];
-    const v = n % 100;
-    return s[(v - 20) % 10] || s[v] || s[0];
+    const s = ['th', 'st', 'nd', 'rd']
+    const v = n % 100
+    return s[(v - 20) % 10] || s[v] || s[0]
   }
 
   const getColor = (percent) => {
-    if (percent === 0) return 'var(--primary)';
-    if (percent < 80) return 'var(--success)';
-    if (percent <= 100) return 'var(--warning)';
-    return 'var(--danger)';
+    if (percent === 0) return 'var(--primary)'
+    if (percent < 80) return 'var(--success)'
+    if (percent <= 100) return 'var(--warning)'
+    return 'var(--danger)'
   }
 
+  // ── Firestore write helpers ──────────────────────────────────────────────
   const handleSaveInlineSubcategory = async (e, cat) => {
-    e.preventDefault();
-    if (!user || !newSubName) return;
-    setIsSaving(true);
-    const limit = parseFloat(newSubLimit) || 0;
+    e.preventDefault()
+    if (!user || !newSubName) return
+    setIsSaving(true)
+    const limit = parseFloat(newSubLimit) || 0
     try {
-      const docRef = doc(db, 'budgets', `${householdId}-${selectedMonth}`);
-      await updateDoc(docRef, {
+      await updateDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), {
         [`${cat}.subcategories.${newSubName}`]: { limit, dueDate: newSubDue }
-      });
-      setAddingSubcatTo(null);
-      setNewSubName('');
-      setNewSubLimit('');
-      setNewSubDue('');
+      })
+      // Append to sub order
+      const newSubOrder = [...(subOrders[cat] || []), newSubName]
+      await saveSubOrder(cat, newSubOrder)
+      setAddingSubcatTo(null)
+      setNewSubName('')
+      setNewSubLimit('')
+      setNewSubDue('')
     } catch (err) {
-      console.error(err);
-      alert('Failed to save subcategory.');
+      console.error(err)
+      alert('Failed to save subcategory.')
     } finally {
-      setIsSaving(false);
+      setIsSaving(false)
     }
-  };
+  }
 
   const handleEditCatSave = async (e, cat) => {
-    e.preventDefault();
-    if (!user) return;
-    setIsSaving(true);
+    e.preventDefault()
+    if (!user) return
+    setIsSaving(true)
     try {
-      const docRef = doc(db, 'budgets', `${householdId}-${selectedMonth}`);
-      await updateDoc(docRef, {
+      await updateDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), {
         [`${cat}.limit`]: parseFloat(editLimit) || 0,
         [`${cat}.dueDate`]: editDue || ''
-      });
-      setEditingCat(null);
+      })
+      setEditingCat(null)
     } catch (err) {
-      console.error(err);
-      alert('Failed to save category edit.');
+      console.error(err)
+      alert('Failed to save category edit.')
     } finally {
-      setIsSaving(false);
+      setIsSaving(false)
     }
-  };
+  }
 
   const handleEditSubcatSave = async (e, cat) => {
-    e.preventDefault();
-    if (!user || !editName) return;
-    setIsSaving(true);
-    const oldName = editingSubcat.oldName;
-    const subcatData = {
-      limit: parseFloat(editLimit) || 0,
-      dueDate: editDue || ''
-    };
+    e.preventDefault()
+    if (!user || !editName) return
+    setIsSaving(true)
+    const oldName = editingSubcat.oldName
+    const subcatData = { limit: parseFloat(editLimit) || 0, dueDate: editDue || '' }
     try {
-      const docRef = doc(db, 'budgets', `${householdId}-${selectedMonth}`);
+      const docRef = doc(db, 'budgets', `${householdId}-${selectedMonth}`)
       if (oldName !== editName) {
-        // Atomic: write new name, delete old name in one call
         await updateDoc(docRef, {
           [`${cat}.subcategories.${editName}`]: subcatData,
           [`${cat}.subcategories.${oldName}`]: deleteField()
-        });
-
-        // Query transactions in this category and old subcategory to rename them
+        })
+        // Rename in subOrder
+        const newSubOrder = (subOrders[cat] || []).map(s => s === oldName ? editName : s)
+        await saveSubOrder(cat, newSubOrder)
+        // Rename in transactions
         try {
-          const q = query(
-            collection(db, 'transactions'),
-            where('householdId', '==', householdId),
-            where('category', '==', cat),
-            where('subcategory', '==', oldName)
-          );
-          const txSnap = await getDocs(q);
-          const updatePromises = [];
-          txSnap.forEach((docSnap) => {
-            const date = docSnap.data().date;
-            if (date && date.startsWith(selectedMonth)) {
-              updatePromises.push(
-                updateDoc(doc(db, 'transactions', docSnap.id), { subcategory: editName })
-              );
-            }
-          });
-          if (updatePromises.length > 0) {
-            await Promise.all(updatePromises);
-          }
-        } catch (txErr) {
-          console.error('Failed to update renamed subcategory in transactions:', txErr);
-        }
+          const txSnap = await getDocs(
+            query(collection(db, 'transactions'),
+              where('householdId', '==', householdId),
+              where('category', '==', cat),
+              where('subcategory', '==', oldName)
+            )
+          )
+          const ups = []
+          txSnap.forEach(ds => { if (ds.data().date?.startsWith(selectedMonth)) ups.push(updateDoc(doc(db, 'transactions', ds.id), { subcategory: editName })) })
+          if (ups.length) await Promise.all(ups)
+        } catch (txErr) { console.error(txErr) }
       } else {
-        await updateDoc(docRef, {
-          [`${cat}.subcategories.${editName}`]: subcatData
-        });
+        await updateDoc(docRef, { [`${cat}.subcategories.${editName}`]: subcatData })
       }
-      setEditingSubcat(null);
+      setEditingSubcat(null)
     } catch (err) {
-      console.error('Save error:', err);
-      alert('Failed to save: ' + err.message);
+      console.error(err)
+      alert('Failed to save: ' + err.message)
     } finally {
-      setIsSaving(false);
+      setIsSaving(false)
     }
-  };
-
-  const handleDeleteSubcat = async (cat, subName) => {
-    if (!user || !window.confirm(`Delete "${subName}"? This only removes the budget limit, not your transactions.`)) return;
-    setIsSaving(true);
-    try {
-      const docRef = doc(db, 'budgets', `${householdId}-${selectedMonth}`);
-      await updateDoc(docRef, {
-        [`${cat}.subcategories.${subName}`]: deleteField()
-      });
-
-      // Clear the subcategory name on any transactions using this subcategory in this month
-      try {
-        const q = query(
-          collection(db, 'transactions'),
-          where('householdId', '==', householdId),
-          where('category', '==', cat),
-          where('subcategory', '==', subName)
-        );
-        const txSnap = await getDocs(q);
-        const updatePromises = [];
-        txSnap.forEach((docSnap) => {
-          const date = docSnap.data().date;
-          if (date && date.startsWith(selectedMonth)) {
-            updatePromises.push(
-              updateDoc(doc(db, 'transactions', docSnap.id), { subcategory: '' })
-            );
-          }
-        });
-        if (updatePromises.length > 0) {
-          await Promise.all(updatePromises);
-        }
-      } catch (txErr) {
-        console.error('Failed to clear deleted subcategory in transactions:', txErr);
-      }
-
-      setEditingSubcat(null);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to delete subcategory.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const startEditCat = (e, cat, catData) => {
-    e.stopPropagation();
-    setEditLimit(catData.limit || '');
-    setEditDue(catData.dueDate || '');
-    setEditingCat(cat);
-  };
-
-  const startEditSubcat = (e, cat, subName, subData) => {
-    e.stopPropagation();
-    setEditName(subName);
-    setEditLimit(subData.limit || '');
-    setEditDue(subData.dueDate || '');
-    setEditingSubcat({ cat, oldName: subName });
-  };
-
-  if (Object.keys(budgets).length === 0) {
-    return (
-      <div className="glass-panel" style={{ padding: '32px', textAlign: 'center' }}>
-        <h3 style={{ margin: '0 0 16px' }}>No Budget Set</h3>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
-          You can start fresh, or copy your entire budget setup from last month to save time.
-        </p>
-        <div style={{ display: 'flex', gap: '16px', justifyContent: 'center' }}>
-          <button className="btn btn-primary" onClick={handleCopyPreviousMonth} disabled={isCopying}>
-            {isCopying ? 'Copying...' : 'Copy Previous Month'}
-          </button>
-          <button className="btn btn-ghost" onClick={onManageClick}>
-            Start Fresh
-          </button>
-        </div>
-      </div>
-    );
   }
 
+  const handleDeleteSubcat = async (cat, subName) => {
+    if (!user || !window.confirm(`Delete "${subName}"? This only removes the budget limit, not your transactions.`)) return
+    setIsSaving(true)
+    try {
+      await updateDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), {
+        [`${cat}.subcategories.${subName}`]: deleteField()
+      })
+      // Remove from subOrder
+      const newSubOrder = (subOrders[cat] || []).filter(s => s !== subName)
+      await saveSubOrder(cat, newSubOrder)
+      setEditingSubcat(null)
+    } catch (err) {
+      console.error(err)
+      alert('Failed to delete subcategory.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const startEditCat = (e, cat, catData) => {
+    e.stopPropagation()
+    setEditLimit(catData.limit || '')
+    setEditDue(catData.dueDate || '')
+    setEditingCat(cat)
+  }
+
+  const startEditSubcat = (e, cat, subName, subData) => {
+    e.stopPropagation()
+    setEditName(subName)
+    setEditLimit(subData.limit || '')
+    setEditDue(subData.dueDate || '')
+    setEditingSubcat({ cat, oldName: subName })
+  }
+
+  const handleAddCategory = async (e) => {
+    e.preventDefault()
+    if (!user || !newCatName.trim()) return
+    const name = newCatName.trim()
+    if (budgets?.[name]) { alert('A category with that name already exists.'); return }
+    setIsSaving(true)
+    try {
+      const docRef = doc(db, 'budgets', `${householdId}-${selectedMonth}`)
+      await setDoc(docRef, {
+        [`${name}`]: { limit: 0, dueDate: newCatDue || '', subcategories: {} }
+      }, { merge: true })
+      
+      const newOrder = [...catOrder, name]
+      await saveCatOrder(newOrder)
+      setAddingNewCat(false)
+      setNewCatName('')
+      setNewCatDue('')
+    } catch (err) {
+      console.error(err)
+      alert('Failed to add category.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleDeleteCategory = async (e, cat) => {
+    e.stopPropagation()
+    if (!user || !window.confirm(`Delete "${cat}"? Your transactions won't be affected.`)) return
+    setIsSaving(true)
+    try {
+      await updateDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), {
+        [`${cat}`]: deleteField()
+      })
+      const newOrder = catOrder.filter(c => c !== cat)
+      await saveCatOrder(newOrder)
+    } catch (err) {
+      console.error(err)
+      alert('Failed to delete category.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // ── Calculate spending ───────────────────────────────────────────────────
+  const categorySpent = {}
+  customCategories.forEach(cat => {
+    categorySpent[cat] = { total: 0, subs: {} }
+    transactions
+      .filter(t => t.type === 'expense' && t.category === cat)
+      .forEach(t => {
+        categorySpent[cat].total += parseFloat(t.amount)
+        if (t.splits?.length > 0) {
+          t.splits.forEach(split => {
+            if (split.subcategory) categorySpent[cat].subs[split.subcategory] = (categorySpent[cat].subs[split.subcategory] || 0) + parseFloat(split.amount)
+          })
+        } else if (t.subcategory) {
+          categorySpent[cat].subs[t.subcategory] = (categorySpent[cat].subs[t.subcategory] || 0) + parseFloat(t.amount)
+        }
+      })
+  })
+
+  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="glass-panel" style={{ padding: '24px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h3 style={{ margin: 0 }}>Budgets</h3>
-        <button 
-          className="btn btn-ghost btn-icon" 
-          onClick={onManageClick}
-          title="Manage Categories & Settings"
-          style={{ color: 'var(--text-secondary)' }}
+        <button
+          className="btn btn-ghost"
+          onClick={handleCopyPreviousMonth}
+          disabled={isCopying}
+          style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--text-secondary)', padding: '6px 10px' }}
+          title="Copy budget setup from previous month"
         >
-          <Settings size={20} />
+          <Copy size={14} /> {isCopying ? 'Copying...' : 'Copy Previous Month'}
         </button>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {activeBudgets.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '24px 16px', color: 'var(--text-secondary)', background: 'var(--bg-base)', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.95rem' }}>
-            No active budgets or spending for this month. Click the gear icon above to set budget limits!
-          </div>
-        ) : (
-          activeBudgets.map(cat => {
-          const catData = budgets && budgets[cat] ? budgets[cat] : { limit: 0, dueDate: '', subcategories: {} };
-          const spent = categorySpent[cat].total
-          const subcategories = catData.subcategories || {}
-          
-          let limit = calculateCatLimit(catData)
-          
-          // Avoid division by zero
-          const percent = limit > 0 ? (spent / limit) * 100 : (spent > 0 ? 101 : 0)
-          const progressPercent = Math.min(100, percent)
-          const color = getColor(percent)
-          const isExpanded = expandedCategories[cat]
-          
-          // Show subcategories if they have a budget limit > 0 OR if there's spending on them
-          const activeSubs = Object.keys(categorySpent[cat].subs);
-          Object.keys(subcategories).forEach(sub => {
-             if (!activeSubs.includes(sub)) activeSubs.push(sub);
-          });
 
-          return (
-            <div key={cat} style={{ background: 'var(--bg-base)', borderRadius: '8px', border: '1px solid var(--border)', overflow: 'hidden' }}>
-              
-                {/* Main Category Accordion Header */}
-                <div 
-                  onClick={() => { if(editingCat !== cat) toggleCategory(cat) }}
-                  style={{ padding: '16px', display: 'flex', flexDirection: 'column', cursor: editingCat === cat ? 'default' : 'pointer', transition: 'background-color 0.2s', position: 'relative' }}
-                  onMouseOver={e => {
-                    if (editingCat !== cat) e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
-                    const btn = e.currentTarget.querySelector('.edit-cat-btn');
-                    if (btn) btn.style.opacity = '1';
-                  }}
-                  onMouseOut={e => {
-                    if (editingCat !== cat) e.currentTarget.style.backgroundColor = 'transparent';
-                    const btn = e.currentTarget.querySelector('.edit-cat-btn');
-                    if (btn) btn.style.opacity = '0';
-                  }}
-                >
-                  {editingCat === cat ? (
-                    <form onSubmit={(e) => handleEditCatSave(e, cat)} style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '8px' }}>
-                      <span style={{ fontWeight: '600', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Editing: {cat}</span>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <input
-                          type="number"
-                          placeholder="Amount"
-                          min="0" step="0.01"
-                          value={editLimit}
-                          onChange={e => setEditLimit(e.target.value)}
-                          style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem' }}
-                          inputMode="decimal"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Due day e.g. 1"
-                          value={editDue}
-                          onChange={e => setEditDue(e.target.value)}
-                          style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem' }}
-                        />
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button type="button" className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setEditingCat(null); }} style={{ flex: 1 }}>
-                          Cancel
-                        </button>
-                        <button type="submit" className="btn btn-primary" disabled={isSaving} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                          <Save size={14} /> {isSaving ? 'Saving...' : 'Save'}
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px', fontSize: '1.05rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          {activeSubs.length > 0 ? (
-                            isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />
-                          ) : <div style={{ width: 18 }} />}
-                          <div>
-                            <div style={{ fontWeight: '600', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              {cat}
-                              <button 
-                                className="btn btn-ghost btn-icon edit-cat-btn"
-                                onClick={(e) => startEditCat(e, cat, catData)}
-                                style={{ padding: '4px', opacity: 0, transition: 'opacity 0.2s', color: 'var(--text-secondary)' }}
-                                title="Edit Category Limit & Due Date"
-                              >
-                                <Pencil size={12} />
-                              </button>
-                            </div>
-                            {renderDueDate(catData.dueDate)}
-                          </div>
-                        </div>
-                        <span style={{ fontWeight: '500' }}>
-                          {spent > 0 ? (
-                            <>
-                              <span style={{ color: color }}>${spent.toFixed(2)}</span>
-                              <span style={{ color: 'var(--text-secondary)', margin: '0 4px' }}>spent /</span>
-                              <span style={{ color: 'var(--text-primary)' }}>${limit.toFixed(2)}</span>
-                              <span style={{ color: 'var(--text-secondary)', marginLeft: '4px' }}>budgeted</span>
-                            </>
-                          ) : (
-                            <>
-                              <span style={{ color: 'var(--text-primary)' }}>${limit.toFixed(2)}</span>
-                              <span style={{ color: 'var(--text-secondary)', marginLeft: '4px' }}>budgeted</span>
-                            </>
-                          )}
-                        </span>
-                      </div>
-                      <div style={{ height: '8px', background: 'var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
-                        <div style={{ 
-                          height: '100%', 
-                          width: `${progressPercent}%`, 
-                          background: color,
-                          transition: 'width 0.3s ease, background-color 0.3s ease'
-                        }} />
-                      </div>
-                    </>
-                  )}
-                </div>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={typeSafeCollision}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <SortableContext items={catOrder} strategy={verticalListSortingStrategy}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {catOrder.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '20px 16px', color: 'var(--text-secondary)', background: 'var(--bg-base)', borderRadius: '8px', border: '1px solid var(--border)', fontSize: '0.9rem' }}>
+                No categories yet — add one below or copy from last month.
+              </div>
+            )}
+            {catOrder.map(cat => {
+              const catData = budgets?.[cat] ?? { limit: 0, dueDate: '', subcategories: {} }
+              const spent = categorySpent[cat]?.total || 0
+              const subcategories = catData.subcategories || {}
+              const limit = calculateCatLimit(catData)
+              const percent = limit > 0 ? (spent / limit) * 100 : (spent > 0 ? 101 : 0)
+              const progressPercent = Math.min(100, percent)
+              const color = getColor(percent)
+              const isExpanded = expandedCategories[cat]
 
-              {/* Subcategories (Expanded Content) */}
-              {isExpanded && activeSubs.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', padding: '0 16px 16px 42px', borderTop: '1px solid var(--border)', paddingTop: '16px', background: 'var(--bg-surface)' }}>
-                  {activeSubs.map(sub => {
-                    const subSpent = categorySpent[cat].subs[sub] || 0
-                    const subData = typeof subcategories[sub] === 'object' ? subcategories[sub] : { limit: subcategories[sub] || 0, dueDate: '' };
-                    const subLimit = subData.limit;
-                    
-                    const subPercentRaw = subLimit > 0 ? (subSpent / subLimit) * 100 : (subSpent > 0 ? 101 : 0);
-                    const subProgressPercent = Math.min(100, subPercentRaw)
-                    const subColor = getColor(subPercentRaw)
+              // Ordered subs for this category
+              const orderedSubs = subOrders[cat] || []
+              // Also include any subs that have spending but aren't in budgets yet
+              const spentSubs = Object.keys(categorySpent[cat]?.subs || {})
+              const allSubs = [...new Set([...orderedSubs, ...spentSubs])].filter(s => s !== '_order')
 
-                    return (
-                      <div 
-                        key={sub} 
-                        style={{ position: 'relative' }}
-                        onMouseOver={e => {
-                          const btn = e.currentTarget.querySelector('.edit-sub-btn');
-                          if (btn) btn.style.opacity = '1';
-                        }}
-                        onMouseOut={e => {
-                          const btn = e.currentTarget.querySelector('.edit-sub-btn');
-                          if (btn) btn.style.opacity = '0';
-                        }}
+              return (
+                <SortableCategoryRow key={cat} id={cat}>
+                  {({ dragHandleProps }) => (
+                    <div style={{ background: 'var(--bg-base)', borderRadius: '10px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+
+                      {/* ── Category Header ─── */}
+                      <div
+                        onClick={() => { if (editingCat !== cat) toggleCategory(cat) }}
+                        style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', cursor: editingCat === cat ? 'default' : 'pointer', transition: 'background-color 0.2s', position: 'relative' }}
+                        onMouseEnter={e => { if (editingCat !== cat) e.currentTarget.style.backgroundColor = 'var(--bg-surface)' }}
+                        onMouseLeave={e => { if (editingCat !== cat) e.currentTarget.style.backgroundColor = 'transparent' }}
                       >
-                        {editingSubcat?.cat === cat && editingSubcat?.oldName === sub ? (
-                          <form onSubmit={(e) => handleEditSubcatSave(e, cat)} style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '8px' }}>
-                            <span style={{ fontWeight: '600', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Editing: {sub}</span>
-                            <input
-                              type="text"
-                              required
-                              value={editName}
-                              onChange={e => setEditName(e.target.value)}
-                              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem', boxSizing: 'border-box' }}
-                              placeholder="Subcategory name"
-                            />
+                        {editingCat === cat ? (
+                          <form onSubmit={(e) => handleEditCatSave(e, cat)} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <span style={{ fontWeight: '600', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Editing: {cat}</span>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                              <input
-                                type="number"
-                                placeholder="Amount"
-                                min="0" step="0.01"
-                                value={editLimit}
-                                onChange={e => setEditLimit(e.target.value)}
-                                style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem' }}
-                                inputMode="decimal"
-                              />
-                              <input
-                                type="text"
-                                placeholder="Due day e.g. 1"
-                                value={editDue}
-                                onChange={e => setEditDue(e.target.value)}
-                                style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem' }}
-                              />
+                              <input type="number" placeholder="Amount" min="0" step="0.01" value={editLimit} onChange={e => setEditLimit(e.target.value)}
+                                style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem' }} inputMode="decimal" />
+                              <input type="text" placeholder="Due day e.g. 1" value={editDue} onChange={e => setEditDue(e.target.value)}
+                                style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem' }} />
                             </div>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                              <button
-                                type="button"
-                                className="btn btn-ghost"
-                                onClick={() => setEditingSubcat(null)}
-                                style={{ flex: 1 }}
-                              >
-                                Cancel
-                              </button>
-                              <button type="submit" className="btn btn-primary" disabled={isSaving} style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                              <button type="button" className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setEditingCat(null) }} style={{ flex: 1 }}>Cancel</button>
+                              <button type="submit" className="btn btn-primary" disabled={isSaving} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                                 <Save size={14} /> {isSaving ? 'Saving...' : 'Save'}
                               </button>
                             </div>
                           </form>
                         ) : (
                           <>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', fontSize: '0.9rem' }}>
-                              <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ fontWeight: '500', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <span style={{ flex: 1 }}>{sub}</span>
-                                  <button
-                                    className="btn btn-ghost btn-icon"
-                                    onClick={(e) => startEditSubcat(e, cat, sub, subData)}
-                                    style={{ padding: '4px', color: 'var(--text-secondary)', flexShrink: 0 }}
-                                    title="Edit"
-                                  >
-                                    <Pencil size={13} />
-                                  </button>
-                                  <button
-                                    className="btn btn-ghost btn-icon"
-                                    onClick={(e) => { e.stopPropagation(); handleDeleteSubcat(cat, sub); }}
-                                    style={{ padding: '4px', color: 'var(--danger)', flexShrink: 0 }}
-                                    title="Delete"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+                                {/* Drag handle */}
+                                <button
+                                  {...dragHandleProps}
+                                  onClick={e => e.stopPropagation()}
+                                  style={{ cursor: 'grab', color: 'var(--text-secondary)', background: 'none', border: 'none', padding: '2px', display: 'flex', alignItems: 'center', flexShrink: 0, touchAction: 'none' }}
+                                  title="Drag to reorder"
+                                >
+                                  <GripVertical size={16} />
+                                </button>
+
+                                {/* Expand chevron */}
+                                <div style={{ flexShrink: 0, color: 'var(--text-secondary)' }}>
+                                  {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                                 </div>
-                                {renderDueDate(subData.dueDate)}
+
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <div style={{ fontWeight: '600', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                                    <span style={{ flexShrink: 0 }}>{cat}</span>
+                                    <button
+                                      className="btn btn-ghost btn-icon"
+                                      onClick={(e) => startEditCat(e, cat, catData)}
+                                      style={{ padding: '3px', color: 'var(--text-secondary)', opacity: 0.6 }}
+                                      title="Edit due date"
+                                    >
+                                      <Pencil size={12} />
+                                    </button>
+                                    <button
+                                      className="btn btn-ghost btn-icon"
+                                      onClick={(e) => handleDeleteCategory(e, cat)}
+                                      style={{ padding: '3px', color: 'var(--danger)', opacity: 0.6 }}
+                                      title="Delete category"
+                                    >
+                                      <Trash2 size={12} />
+                                    </button>
+                                  </div>
+                                  {renderDueDate(catData.dueDate)}
+                                </div>
                               </div>
-                              <span style={{ fontWeight: '500', flexShrink: 0, marginLeft: '8px' }}>
-                                <span style={{ color: subColor }}>${subSpent.toFixed(2)}</span>
-                                <span style={{ color: 'var(--text-primary)', margin: '0 4px' }}>/</span>
-                                <span style={{ color: 'var(--text-primary)' }}>${subLimit.toFixed(2)}</span>
+
+                              <span style={{ fontWeight: '500', fontSize: '0.9rem', flexShrink: 0, marginLeft: '8px', textAlign: 'right' }}>
+                                {spent > 0 ? (
+                                  <>
+                                    <span style={{ color }}>${spent.toFixed(2)}</span>
+                                    <span style={{ color: 'var(--text-secondary)', margin: '0 3px' }}>/</span>
+                                    <span style={{ color: 'var(--text-primary)' }}>${limit.toFixed(2)}</span>
+                                  </>
+                                ) : (
+                                  <span style={{ color: 'var(--text-primary)' }}>${limit.toFixed(2)} budgeted</span>
+                                )}
                               </span>
                             </div>
-                            <div style={{ height: '6px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
-                              <div style={{ 
-                                height: '100%', 
-                                width: `${subProgressPercent}%`, 
-                                background: subColor,
-                                transition: 'width 0.3s ease, background-color 0.3s ease'
-                              }} />
+
+                            {/* Progress bar */}
+                            <div style={{ height: '7px', background: 'var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${progressPercent}%`, background: color, transition: 'width 0.3s ease, background-color 0.3s ease' }} />
                             </div>
                           </>
                         )}
                       </div>
-                    )
-                  })}
-                  
-                  {addingSubcatTo === cat ? (
-                    <form 
-                      onSubmit={(e) => handleSaveInlineSubcategory(e, cat)} 
-                      style={{ display: 'flex', gap: '8px', marginTop: '8px', padding: '12px', background: 'var(--bg-base)', borderRadius: '6px', border: '1px solid var(--border)' }}
-                    >
-                      <input 
-                        type="text" 
-                        placeholder="Name" 
-                        required 
-                        value={newSubName}
-                        onChange={e => setNewSubName(e.target.value)}
-                        style={{ flex: 1, padding: '8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
-                      />
-                      <input 
-                        type="number" 
-                        placeholder="Amount" 
-                        min="0" step="0.01" 
-                        value={newSubLimit}
-                        onChange={e => setNewSubLimit(e.target.value)}
-                        style={{ width: '80px', padding: '8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
-                      />
-                      <input 
-                        type="text" 
-                        placeholder="Days e.g. 1, 15" 
-                        value={newSubDue}
-                        onChange={e => setNewSubDue(e.target.value)}
-                        style={{ width: '110px', padding: '8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)' }}
-                      />
-                      <button type="submit" className="btn btn-primary" style={{ padding: '8px 12px', fontSize: '0.85rem' }} disabled={isSaving}>
-                        {isSaving ? '...' : 'Save'}
-                      </button>
-                      <button type="button" className="btn btn-ghost" onClick={() => { setAddingSubcatTo(null); setNewSubDue(''); }} style={{ padding: '8px 12px', fontSize: '0.85rem' }}>
-                        Cancel
-                      </button>
-                    </form>
-                  ) : (
-                    <button 
-                      className="btn btn-ghost" 
-                      onClick={() => {
-                        setAddingSubcatTo(cat);
-                        setNewSubName('');
-                        setNewSubLimit('');
-                      }}
-                      style={{ marginTop: '8px', padding: '8px', fontSize: '0.85rem', width: 'fit-content' }}
-                    >
-                      <Plus size={14} /> Add Subcategory
-                    </button>
-                  )}
-                </div>
-              )}
 
+                      {/* ── Expanded Subcategories ─── */}
+                      {isExpanded && (
+                        <div style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-surface)', padding: '12px 16px 14px 16px' }}>
+                          {allSubs.length === 0 && addingSubcatTo !== cat && (
+                            <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', fontStyle: 'italic', marginBottom: '10px' }}>
+                              No subcategories yet. Add one below.
+                            </div>
+                          )}
+
+                          <SortableContext items={allSubs.map(s => `${cat}::${s}`)} strategy={verticalListSortingStrategy}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+                                {allSubs.map(sub => {
+                                  const subSpent = categorySpent[cat]?.subs[sub] || 0
+                                  const subData = typeof subcategories[sub] === 'object'
+                                    ? subcategories[sub]
+                                    : { limit: subcategories[sub] || 0, dueDate: '' }
+                                  const subLimit = parseFloat(subData.limit) || 0
+                                  const subPercentRaw = subLimit > 0 ? (subSpent / subLimit) * 100 : (subSpent > 0 ? 101 : 0)
+                                  const subColor = getColor(subPercentRaw)
+
+                                  return (
+                                    <SortableSubRow key={sub} id={`${cat}::${sub}`} cat={cat}>
+                                      {({ dragHandleProps: subDragProps }) => (
+                                        <div>
+                                          {editingSubcat?.cat === cat && editingSubcat?.oldName === sub ? (
+                                            <form onSubmit={(e) => handleEditSubcatSave(e, cat)} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', background: 'var(--bg-base)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                              <span style={{ fontWeight: '600', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Editing: {sub}</span>
+                                              <input type="text" required value={editName} onChange={e => setEditName(e.target.value)}
+                                                style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem', boxSizing: 'border-box' }}
+                                                placeholder="Subcategory name" />
+                                              <div style={{ display: 'flex', gap: '8px' }}>
+                                                <input type="number" placeholder="Amount" min="0" step="0.01" value={editLimit} onChange={e => setEditLimit(e.target.value)}
+                                                  style={{ flex: 1, padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem' }} inputMode="decimal" />
+                                                <input type="text" placeholder="Due day e.g. 1" value={editDue} onChange={e => setEditDue(e.target.value)}
+                                                  style={{ flex: 1, padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem' }} />
+                                              </div>
+                                              <div style={{ display: 'flex', gap: '8px' }}>
+                                                <button type="button" className="btn btn-ghost" onClick={() => setEditingSubcat(null)} style={{ flex: 1 }}>Cancel</button>
+                                                <button type="submit" className="btn btn-primary" disabled={isSaving} style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                  <Save size={13} /> {isSaving ? 'Saving...' : 'Save'}
+                                                </button>
+                                              </div>
+                                              <button type="button" className="btn btn-ghost" onClick={() => handleDeleteSubcat(cat, sub)}
+                                                style={{ color: 'var(--danger)', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                <Trash2 size={12} /> Delete Subcategory
+                                              </button>
+                                            </form>
+                                          ) : (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                {/* Sub drag handle */}
+                                                <button
+                                                  {...subDragProps}
+                                                  onClick={e => e.stopPropagation()}
+                                                  style={{ cursor: 'grab', color: 'var(--text-secondary)', background: 'none', border: 'none', padding: '2px', display: 'flex', alignItems: 'center', opacity: 0.5, flexShrink: 0, touchAction: 'none' }}
+                                                  title="Drag to reorder"
+                                                >
+                                                  <GripVertical size={14} />
+                                                </button>
+
+                                                <span style={{ flex: 1, fontSize: '0.9rem', fontWeight: '500' }}>{sub}</span>
+
+                                                <span style={{ fontSize: '0.85rem', fontWeight: '500', flexShrink: 0 }}>
+                                                  <span style={{ color: subColor }}>${subSpent.toFixed(2)}</span>
+                                                  <span style={{ color: 'var(--text-secondary)', margin: '0 3px' }}>/</span>
+                                                  <span style={{ color: 'var(--text-primary)' }}>${subLimit.toFixed(2)}</span>
+                                                </span>
+
+                                                <button className="btn btn-ghost btn-icon" onClick={(e) => startEditSubcat(e, cat, sub, subData)}
+                                                  style={{ padding: '3px', color: 'var(--text-secondary)', flexShrink: 0 }} title="Edit">
+                                                  <Pencil size={12} />
+                                                </button>
+                                              </div>
+
+                                              {renderDueDate(subData.dueDate)}
+
+                                              <div style={{ height: '5px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
+                                                <div style={{ height: '100%', width: `${Math.min(100, subPercentRaw)}%`, background: subColor, transition: 'width 0.3s ease' }} />
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </SortableSubRow>
+                                  )
+                                })}
+                              </div>
+                            </SortableContext>
+
+                          {/* Add Subcategory */}
+                          {addingSubcatTo === cat ? (
+                            <form onSubmit={(e) => handleSaveInlineSubcategory(e, cat)}
+                              style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px', padding: '12px', background: 'var(--bg-base)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              <span style={{ fontWeight: '600', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>New Subcategory</span>
+                              <input type="text" placeholder="Subcategory name" required autoFocus value={newSubName} onChange={e => setNewSubName(e.target.value)}
+                                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem', boxSizing: 'border-box' }} />
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <input type="number" placeholder="Budget amount" min="0" step="0.01" value={newSubLimit} onChange={e => setNewSubLimit(e.target.value)}
+                                  style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem' }} inputMode="decimal" />
+                                <input type="text" placeholder="Due day(s) e.g. 1, 15" value={newSubDue} onChange={e => setNewSubDue(e.target.value)}
+                                  style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem' }} />
+                              </div>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button type="button" className="btn btn-ghost" onClick={() => { setAddingSubcatTo(null); setNewSubName(''); setNewSubLimit(''); setNewSubDue('') }} style={{ flex: 1 }}>Cancel</button>
+                                <button type="submit" className="btn btn-primary" disabled={isSaving} style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                  <Save size={14} /> {isSaving ? 'Saving...' : 'Save Subcategory'}
+                                </button>
+                              </div>
+                            </form>
+                          ) : (
+                            <button className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setAddingSubcatTo(cat); setNewSubName(''); setNewSubLimit(''); setNewSubDue('') }}
+                              style={{ marginTop: '10px', padding: '7px 12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <Plus size={14} /> Add Subcategory
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </SortableCategoryRow>
+              )
+            })}
+          </div>
+
+          {/* ── Add Category Form ─── */}
+          {addingNewCat ? (
+            <form onSubmit={handleAddCategory}
+              style={{ marginTop: '4px', padding: '14px', background: 'var(--bg-base)', borderRadius: '10px', border: '1px solid var(--primary)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <span style={{ fontWeight: '600', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>New Category</span>
+              <input
+                type="text"
+                placeholder="Category name (e.g. Housing)"
+                required
+                autoFocus
+                value={newCatName}
+                onChange={e => setNewCatName(e.target.value)}
+                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem', boxSizing: 'border-box' }}
+              />
+              <input
+                type="text"
+                placeholder="Due day(s) e.g. 1, 15 (optional)"
+                value={newCatDue}
+                onChange={e => setNewCatDue(e.target.value)}
+                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem', boxSizing: 'border-box' }}
+              />
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button type="button" className="btn btn-ghost" onClick={() => { setAddingNewCat(false); setNewCatName(''); setNewCatDue('') }} style={{ flex: 1 }}>Cancel</button>
+                <button type="submit" className="btn btn-primary" disabled={isSaving} style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                  <Save size={14} /> {isSaving ? 'Saving...' : 'Save Category'}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button
+              className="btn btn-ghost"
+              onClick={() => { setAddingNewCat(true); setNewCatName(''); setNewCatDue('') }}
+              style={{ marginTop: '4px', width: '100%', padding: '11px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', fontSize: '0.9rem', border: '1px dashed var(--border)', borderRadius: '10px' }}
+            >
+              <Plus size={16} /> Add Category
+            </button>
+          )}
+        </SortableContext>
+
+        {/* Drag overlay for visual feedback */}
+        <DragOverlay>
+          {activeDragId && activeDragType === 'cat' && (
+            <div style={{ background: 'var(--bg-surface)', borderRadius: '10px', border: '2px solid var(--primary)', padding: '14px 16px', fontWeight: '600', boxShadow: '0 8px 24px rgba(0,0,0,0.3)', opacity: 0.95 }}>
+              {activeDragId}
             </div>
-          )
-        }))}
-      </div>
+          )}
+          {activeDragId && activeDragType === 'sub' && (
+            <div style={{ background: 'var(--bg-base)', borderRadius: '8px', border: '2px solid var(--primary)', padding: '10px 14px', fontSize: '0.9rem', fontWeight: '500', boxShadow: '0 6px 20px rgba(0,0,0,0.25)', opacity: 0.95 }}>
+              {activeDragId.replace(`${activeDragCat}::`, '')}
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
     </div>
   )
 }

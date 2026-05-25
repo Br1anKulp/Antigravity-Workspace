@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { MAIN_CATEGORIES } from '../config/categories';
 
 export default function AnalyticsChart({ transactions }) {
   const data = useMemo(() => {

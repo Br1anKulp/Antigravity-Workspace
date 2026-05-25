@@ -8,11 +8,9 @@ import Dashboard from './components/Dashboard'
 import TransactionList from './components/TransactionList'
 import TransactionForm from './components/TransactionForm'
 import Auth from './components/Auth'
-import BudgetManager from './components/BudgetManager'
 import BudgetProgress from './components/BudgetProgress'
 import Insights from './components/Insights'
 import { requestNotificationPermission, checkUpcomingBills } from './utils/notifications'
-import { MAIN_CATEGORIES, CATEGORIES } from './config/categories'
 
 function App() {
   const [theme, setTheme] = useState(() => {
@@ -25,7 +23,6 @@ function App() {
   const [transactions, setTransactions] = useState([])
   const [budgets, setBudgets] = useState({})
   const [loadingBudgets, setLoadingBudgets] = useState(true)
-  const [isBudgetManagerOpen, setIsBudgetManagerOpen] = useState(false)
   const [activeTab, setActiveTab] = useState('dashboard')
   
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -136,38 +133,54 @@ function App() {
     migrateBudgetPath();
   }, [user, householdId, selectedMonth]);
 
-  // One-time migration to ensure all default categories exist in Firestore
+  // One-time cleanup: remove all hardcoded default categories from Firestore
   useEffect(() => {
-    if (user && !loadingBudgets && Object.keys(budgets).length > 0 && !budgets._migrated_v2) {
-      const runMigration = async () => {
-        let modified = false;
-        let newBudgets = { ...budgets };
+    if (!user || !householdId) return;
+    const flagKey = `gs_defaults_purged_${householdId}`;
+    if (localStorage.getItem(flagKey)) return; // Already done
 
-        // Clean up any corrupted numeric keys from the previous bug
-        Object.keys(newBudgets).forEach(k => {
-          if (!isNaN(k) && k !== '') {
-            delete newBudgets[k];
-            modified = true;
+    const DEFAULT_CATEGORIES = [
+      'Home Expenses', 'Transportation', 'Daily Living',
+      'Entertainment', 'Health', 'Personal', 'Savings', 'Donations', 'Misc'
+    ];
+
+    const purgeDefaults = async () => {
+      try {
+        // Get all budget docs for this household
+        const snapshot = await getDocs(collection(db, 'budgets'));
+        const promises = [];
+        snapshot.forEach(docSnap => {
+          if (!docSnap.id.startsWith(householdId)) return;
+          const data = docSnap.data();
+          let modified = false;
+          const newData = { ...data };
+
+          // Remove hardcoded defaults AND any corrupted numeric keys
+          Object.keys(newData).forEach(k => {
+            if (DEFAULT_CATEGORIES.includes(k) || (!isNaN(k) && k !== '')) {
+              delete newData[k];
+              modified = true;
+              console.log(`Purging default category "${k}" from ${docSnap.id}`);
+            }
+          });
+
+          if (modified) {
+            promises.push(setDoc(doc(db, 'budgets', docSnap.id), newData));
           }
         });
 
-        // No longer forcefully adding default categories to Firestore to allow user deletion
+        await Promise.all(promises);
+        localStorage.setItem(flagKey, 'true');
+        console.log('Default category purge complete.');
+      } catch (err) {
+        console.error('Purge error:', err);
+      }
+    };
+
+    purgeDefaults();
+  }, [user, householdId]);
 
 
-        if (modified) {
-          newBudgets._migrated_v2 = true;
-          const cleanData = JSON.parse(JSON.stringify(newBudgets, (k, v) => v === undefined ? null : v));
-          try {
-            await setDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), cleanData);
-            console.log("Migration successful: Restored default categories.");
-          } catch (err) {
-            console.error("Migration failed:", err);
-          }
-        }
-      };
-      runMigration();
-    }
-  }, [user, budgets, selectedMonth, householdId, loadingBudgets]);
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light')
@@ -249,7 +262,7 @@ function App() {
     // Pull categories and subcategories ONLY from your active budget document
     if (budgets && Object.keys(budgets).length > 0) {
       Object.keys(budgets).forEach(c => {
-        if (c === '_migrated_v2') return; // Ignore migration flag
+        if (c.startsWith('_')) return; // Ignore internal properties like _categoryOrder, _subcategoryOrder, _migrated_v2
         
         const dbSubcategories = Object.keys(budgets[c]?.subcategories || {});
         config[c] = dbSubcategories;
@@ -273,8 +286,8 @@ function App() {
     <div className="app-container">
       <header className="header glass-panel">
         <div className="brand" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <img src="/logo.png" alt="Flow" style={{ width: '32px', height: '32px', borderRadius: '8px', objectFit: 'cover' }} />
-          <span style={{ fontWeight: '700', fontSize: '1.25rem', letterSpacing: '0.5px' }}>Flow</span>
+          <img src="/logo.png" alt="Good Steward" style={{ width: '32px', height: '32px', borderRadius: '8px', objectFit: 'cover' }} />
+          <span style={{ fontWeight: '700', fontSize: '1.25rem', letterSpacing: '0.5px' }}>Good Steward</span>
         </div>
         <div className="header-actions">
           <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginRight: '8px', display: 'none' }}>
@@ -350,16 +363,6 @@ function App() {
                 householdId={householdId}
                 customCategories={customCategories} 
                 selectedMonth={selectedMonth}
-                onManageClick={() => setIsBudgetManagerOpen(true)}
-              />
-              <BudgetManager 
-                user={user} 
-                budgets={budgets} 
-                householdId={householdId}
-                customCategories={customCategories}
-                selectedMonth={selectedMonth}
-                isOpen={isBudgetManagerOpen}
-                onClose={() => setIsBudgetManagerOpen(false)}
               />
             </div>
 

@@ -45,7 +45,7 @@ export default function TransactionList({ transactions, onDelete, onEditRequest,
     
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `flow_transactions_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `good_steward_transactions_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

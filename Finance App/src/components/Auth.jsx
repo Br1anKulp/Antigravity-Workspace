@@ -27,10 +27,10 @@ export default function Auth() {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
       <div className="glass-panel" style={{ padding: '40px', width: '100%', maxWidth: '400px', textAlign: 'center' }}>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
-          <img src="/logo.png" alt="Flow Logo" style={{ width: '64px', height: '64px', borderRadius: '12px', objectFit: 'cover', boxShadow: '0 8px 30px rgba(0,0,0,0.3)' }} />
+          <img src="/logo.png" alt="Good Steward Logo" style={{ width: '64px', height: '64px', borderRadius: '12px', objectFit: 'cover', boxShadow: '0 8px 30px rgba(0,0,0,0.3)' }} />
         </div>
-        <h1 style={{ fontSize: '2rem', marginBottom: '8px' }}>Flow</h1>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>Sign in to manage your budget.</p>
+        <h1 style={{ fontSize: '2rem', marginBottom: '8px' }}>Good Steward</h1>
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>Sign in to manage your family budget.</p>
 
         {error && (
           <div style={{ background: 'var(--danger-bg)', color: 'var(--danger)', padding: '12px', borderRadius: '8px', marginBottom: '24px', fontSize: '0.9rem' }}>
