@@ -199,6 +199,8 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
 
   const handleCopyPreviousMonth = async () => {
     if (!user) return
+    if (!window.confirm("Are you sure you want to copy the previous month's budget? This will completely replace your current budget categories, subcategories, and limits for this month.")) return
+    
     setIsCopying(true)
     try {
       const prevMonth = getPrevMonth(selectedMonth)

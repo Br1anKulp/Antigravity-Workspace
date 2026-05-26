@@ -279,6 +279,8 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                         const custom = prompt('Enter custom subcategory:');
                         if (custom) {
                           setFormData({ ...formData, subcategory: custom });
+                        } else {
+                          setFormData({ ...formData, subcategory: '' });
                         }
                       } else {
                         setFormData({ ...formData, subcategory: e.target.value });
@@ -322,6 +324,8 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                                 const custom = prompt('Enter custom subcategory:');
                                 if (custom) {
                                   handleSplitChange(idx, 'subcategory', custom);
+                                } else {
+                                  handleSplitChange(idx, 'subcategory', '');
                                 }
                               } else {
                                 handleSplitChange(idx, 'subcategory', e.target.value);
@@ -377,8 +381,26 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                         Split Total: <span style={{ fontWeight: '600', color: isSumMatching ? 'var(--success)' : 'var(--danger)' }}>${splitsSum.toFixed(2)}</span>
                       </div>
                       {!isSumMatching && (
-                        <div style={{ fontSize: '0.8rem', color: 'var(--danger)', marginTop: '4px', fontWeight: '500' }}>
-                          ⚠️ Remaining: ${(parseFloat(formData.amount || 0) - splitsSum).toFixed(2)}
+                        <div style={{ fontSize: '0.8rem', color: 'var(--danger)', marginTop: '4px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'flex-end' }}>
+                          <span>⚠️ Remaining: ${(parseFloat(formData.amount || 0) - splitsSum).toFixed(2)}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const remainder = parseFloat(formData.amount || 0) - splitsSum;
+                              if (Math.abs(remainder) < 0.01) return;
+                              const newSplits = [...splits];
+                              const lastSplitIdx = newSplits.length - 1;
+                              if (lastSplitIdx >= 0 && (!newSplits[lastSplitIdx].amount || parseFloat(newSplits[lastSplitIdx].amount) === 0)) {
+                                newSplits[lastSplitIdx].amount = String(remainder.toFixed(2));
+                              } else {
+                                newSplits.push({ subcategory: '', amount: String(remainder.toFixed(2)) });
+                              }
+                              setSplits(newSplits);
+                            }}
+                            style={{ background: 'var(--primary-bg)', color: 'var(--primary)', border: 'none', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600' }}
+                          >
+                            Auto-Fill
+                          </button>
                         </div>
                       )}
                     </div>
