@@ -20,7 +20,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
 
   // Split transaction states
   const [isSplit, setIsSplit] = useState(false)
-  const [splits, setSplits] = useState([{ subcategory: '', amount: '' }])
+  const [splits, setSplits] = useState([{ subcategory: '', amount: '', notes: '' }])
 
   // Clear subcategory when category changes so user must select one
   useEffect(() => {
@@ -49,10 +49,10 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
       
       if (tx.splits && tx.splits.length > 0) {
         setIsSplit(true);
-        setSplits(tx.splits.map(s => ({ subcategory: s.subcategory, amount: String(s.amount) })));
+        setSplits(tx.splits.map(s => ({ subcategory: s.subcategory, amount: String(s.amount), notes: s.notes || '' })));
       } else {
         setIsSplit(false);
-        setSplits([{ subcategory: '', amount: '' }]);
+        setSplits([{ subcategory: '', amount: '', notes: '' }]);
       }
       
       setEditingId(tx.id);
@@ -78,7 +78,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
       notes: ''
     });
     setIsSplit(false);
-    setSplits([{ subcategory: '', amount: '' }]);
+    setSplits([{ subcategory: '', amount: '', notes: '' }]);
     setEditingId(null);
     setIsOpen(false);
   }
@@ -96,7 +96,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
       amount: parseFloat(formData.amount),
       category: formData.type === 'income' ? 'Income' : formData.category,
       subcategory: formData.type === 'income' ? '' : (isSplit ? 'Split' : formData.subcategory),
-      splits: isSplit ? splits.map(s => ({ subcategory: s.subcategory, amount: parseFloat(s.amount) || 0 })) : null,
+      splits: isSplit ? splits.map(s => ({ subcategory: s.subcategory, amount: parseFloat(s.amount) || 0, notes: (s.notes || '').trim() })) : null,
       notes: formData.notes.trim()
     };
     delete txDataTemplate.dates; // Remove the array from the payload
@@ -119,7 +119,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
   }
 
   const handleAddSplit = () => {
-    setSplits(prev => [...prev, { subcategory: '', amount: '' }]);
+    setSplits(prev => [...prev, { subcategory: '', amount: '', notes: '' }]);
   }
 
   const handleRemoveSplit = (idx) => {
@@ -311,58 +311,67 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                     </button>
                   </div>
                   
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '12px' }}>
                     {splits.map((s, idx) => (
-                      <div key={idx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                        <div style={{ flex: 2, position: 'relative' }}>
-                          <select 
-                            value={s.subcategory}
-                            required
-                            autoComplete="off"
-                            onChange={e => {
-                              if (e.target.value === '__custom__') {
-                                const custom = prompt('Enter custom subcategory:');
-                                if (custom) {
-                                  handleSplitChange(idx, 'subcategory', custom);
+                      <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '14px', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <div style={{ flex: 2, position: 'relative' }}>
+                            <select 
+                              value={s.subcategory}
+                              required
+                              autoComplete="off"
+                              onChange={e => {
+                                if (e.target.value === '__custom__') {
+                                  const custom = prompt('Enter custom subcategory:');
+                                  if (custom) {
+                                    handleSplitChange(idx, 'subcategory', custom);
+                                  } else {
+                                    handleSplitChange(idx, 'subcategory', '');
+                                  }
                                 } else {
-                                  handleSplitChange(idx, 'subcategory', '');
+                                  handleSplitChange(idx, 'subcategory', e.target.value);
                                 }
-                              } else {
-                                handleSplitChange(idx, 'subcategory', e.target.value);
-                              }
-                            }}
-                            style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.95rem', appearance: 'auto' }}
-                          >
-                            <option value="">Select Subcategory</option>
-                            {(categoriesConfig[formData.category] || []).map(sub => (
-                              <option key={sub} value={sub}>{sub}</option>
-                            ))}
-                            {s.subcategory && !(categoriesConfig[formData.category] || []).includes(s.subcategory) && s.subcategory !== '__custom__' && (
-                              <option value={s.subcategory}>{s.subcategory}</option>
-                            )}
-                            <option value="__custom__">+ Add Custom...</option>
-                          </select>
+                              }}
+                              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.95rem', appearance: 'auto' }}
+                            >
+                              <option value="">Select Subcategory</option>
+                              {(categoriesConfig[formData.category] || []).map(sub => (
+                                <option key={sub} value={sub}>{sub}</option>
+                              ))}
+                              {s.subcategory && !(categoriesConfig[formData.category] || []).includes(s.subcategory) && s.subcategory !== '__custom__' && (
+                                <option value={s.subcategory}>{s.subcategory}</option>
+                              )}
+                              <option value="__custom__">+ Add Custom...</option>
+                            </select>
+                          </div>
+                          <input 
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={s.amount}
+                            onChange={e => handleSplitChange(idx, 'amount', e.target.value)}
+                            style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)' }}
+                            placeholder="Amount"
+                            inputMode="decimal"
+                          />
+                          {splits.length > 1 && (
+                            <button 
+                              type="button" 
+                              className="btn btn-ghost btn-icon" 
+                              onClick={() => handleRemoveSplit(idx)}
+                              style={{ color: 'var(--danger)', padding: '8px', flexShrink: 0 }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
                         </div>
-                        <input 
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={s.amount}
-                          onChange={e => handleSplitChange(idx, 'amount', e.target.value)}
-                          style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)' }}
-                          placeholder="Amount"
-                          inputMode="decimal"
+                        <input
+                          type="text"
+                          value={s.notes || ''}
+                          onChange={e => handleSplitChange(idx, 'notes', e.target.value)}
+                          placeholder="Split notes (e.g. personal share, gift)"
+                          style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.85rem', boxSizing: 'border-box' }}
                         />
-                        {splits.length > 1 && (
-                          <button 
-                            type="button" 
-                            className="btn btn-ghost btn-icon" 
-                            onClick={() => handleRemoveSplit(idx)}
-                            style={{ color: 'var(--danger)', padding: '8px', flexShrink: 0 }}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
                       </div>
                     ))}
                   </div>
