@@ -176,7 +176,7 @@ export default function TransactionList({ transactions, onDelete, onEditRequest,
                     {t.splits && t.splits.length > 0 ? (
                       <span style={{ fontStyle: 'italic', opacity: 0.9 }}>
                         {` > Split: `}
-                        {t.splits.map(s => `${s.subcategory} ($${parseFloat(s.amount).toFixed(2)})${s.notes ? ` [${s.notes}]` : ''}`).join(', ')}
+                        {t.splits.map(s => `${s.category || t.category}${s.subcategory ? ` > ${s.subcategory}` : ''} ($${parseFloat(s.amount).toFixed(2)})${s.notes ? ` [${s.notes}]` : ''}`).join(', ')}
                       </span>
                     ) : (
                       t.subcategory && ` > ${t.subcategory}`

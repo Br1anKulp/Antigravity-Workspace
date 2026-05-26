@@ -18,7 +18,7 @@ export default function Dashboard({ transactions, budgets = {}, onUpdateTransact
     return groups;
   }, {});
 
-  // Calculate Safe to Spend (Current Balance - Remaining Reserved Budget Limits)
+  // Calculate Left to Budget (Current Balance - Remaining Reserved Budget Limits)
   const unspentReserved = Object.keys(budgets || {}).reduce((total, cat) => {
     if (cat.startsWith('_')) return total;
     const catData = budgets[cat];
@@ -30,8 +30,18 @@ export default function Dashboard({ transactions, budgets = {}, onUpdateTransact
     
     // Category spent
     const spent = transactions
-      .filter(t => t.type === 'expense' && t.category === cat)
-      .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => {
+        if (t.splits?.length > 0) {
+          const splitSum = t.splits
+            .filter(split => (split.category || t.category) === cat)
+            .reduce((sSum, split) => sSum + (parseFloat(split.amount) || 0), 0);
+          return sum + splitSum;
+        } else if (t.category === cat) {
+          return sum + (parseFloat(t.amount) || 0);
+        }
+        return sum;
+      }, 0);
       
     const remaining = Math.max(0, limit - spent);
     return total + remaining;

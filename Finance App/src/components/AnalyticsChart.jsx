@@ -5,10 +5,16 @@ export default function AnalyticsChart({ transactions }) {
   const data = useMemo(() => {
     const categoryTotals = {};
     
-    // Initialize with 0 to maintain consistent color mapping, or just build dynamically
     transactions.forEach(t => {
       if (t.type === 'expense') {
-        categoryTotals[t.category] = (categoryTotals[t.category] || 0) + parseFloat(t.amount);
+        if (t.splits && t.splits.length > 0) {
+          t.splits.forEach(s => {
+            const cat = s.category || t.category;
+            categoryTotals[cat] = (categoryTotals[cat] || 0) + parseFloat(s.amount);
+          });
+        } else {
+          categoryTotals[t.category] = (categoryTotals[t.category] || 0) + parseFloat(t.amount);
+        }
       }
     });
 

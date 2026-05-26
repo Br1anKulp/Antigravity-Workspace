@@ -422,19 +422,33 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
   const categorySpent = {}
   customCategories.forEach(cat => {
     categorySpent[cat] = { total: 0, subs: {} }
-    transactions
-      .filter(t => t.type === 'expense' && t.category === cat)
-      .forEach(t => {
-        categorySpent[cat].total += parseFloat(t.amount)
-        if (t.splits?.length > 0) {
-          t.splits.forEach(split => {
-            if (split.subcategory) categorySpent[cat].subs[split.subcategory] = (categorySpent[cat].subs[split.subcategory] || 0) + parseFloat(split.amount)
-          })
-        } else if (t.subcategory) {
-          categorySpent[cat].subs[t.subcategory] = (categorySpent[cat].subs[t.subcategory] || 0) + parseFloat(t.amount)
-        }
-      })
   })
+
+  transactions
+    .filter(t => t.type === 'expense')
+    .forEach(t => {
+      if (t.splits?.length > 0) {
+        t.splits.forEach(split => {
+          const splitCat = split.category || t.category;
+          const amt = parseFloat(split.amount) || 0;
+          if (categorySpent[splitCat]) {
+            categorySpent[splitCat].total += amt;
+            if (split.subcategory) {
+              categorySpent[splitCat].subs[split.subcategory] = (categorySpent[splitCat].subs[split.subcategory] || 0) + amt;
+            }
+          }
+        });
+      } else {
+        const amt = parseFloat(t.amount) || 0;
+        const cat = t.category;
+        if (categorySpent[cat]) {
+          categorySpent[cat].total += amt;
+          if (t.subcategory) {
+            categorySpent[cat].subs[t.subcategory] = (categorySpent[cat].subs[t.subcategory] || 0) + amt;
+          }
+        }
+      }
+    })
 
   // ── Render ───────────────────────────────────────────────────────────────
   return (
