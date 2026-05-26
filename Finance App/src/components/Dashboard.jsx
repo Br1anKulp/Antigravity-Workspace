@@ -52,7 +52,7 @@ export default function Dashboard({ transactions, budgets = {}, onUpdateTransact
               </h2>
               <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: safeToSpend >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: '500', background: 'rgba(255,255,255,0.03)', padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border)', width: 'fit-content' }}>
                 <ShieldCheck size={14} />
-                <span>Safe to Spend: <strong style={{ fontSize: '0.88rem' }}>${safeToSpend.toFixed(2)}</strong></span>
+                <span>Left to Budget: <strong style={{ fontSize: '0.88rem' }}>${safeToSpend.toFixed(2)}</strong></span>
               </div>
             </div>
             <div style={{ background: 'var(--primary-bg)', color: 'var(--primary)', padding: '12px', borderRadius: '50%' }}>
