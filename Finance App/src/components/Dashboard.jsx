@@ -1,8 +1,8 @@
 import React from 'react'
-import { TrendingUp, TrendingDown, DollarSign, Clock, CreditCard } from 'lucide-react'
+import { TrendingUp, TrendingDown, DollarSign, Clock, CreditCard, ShieldCheck, CheckCircle2 } from 'lucide-react'
 import AnalyticsChart from './AnalyticsChart'
 
-export default function Dashboard({ transactions }) {
+export default function Dashboard({ transactions, budgets = {}, onUpdateTransaction }) {
   const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + parseFloat(t.amount), 0)
   const expenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + parseFloat(t.amount), 0)
   const unpaid = transactions.filter(t => t.type === 'expense' && t.status === 'unpaid').reduce((sum, t) => sum + parseFloat(t.amount), 0)
@@ -18,17 +18,42 @@ export default function Dashboard({ transactions }) {
     return groups;
   }, {});
 
+  // Calculate Safe to Spend (Current Balance - Remaining Reserved Budget Limits)
+  const unspentReserved = Object.keys(budgets || {}).reduce((total, cat) => {
+    if (cat.startsWith('_')) return total;
+    const catData = budgets[cat];
+    
+    // Sum of subcategory limits
+    const limit = Object.entries(catData?.subcategories || {})
+      .filter(([k]) => k !== '_order')
+      .reduce((sum, [, sub]) => sum + (parseFloat(sub.limit) || 0), 0);
+    
+    // Category spent
+    const spent = transactions
+      .filter(t => t.type === 'expense' && t.category === cat)
+      .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+      
+    const remaining = Math.max(0, limit - spent);
+    return total + remaining;
+  }, 0);
+  
+  const safeToSpend = balance - unspentReserved;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       {/* 4 Stat Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '24px' }}>
-        <div className="glass-panel" style={{ padding: '24px' }}>
+        <div className="glass-panel" style={{ padding: '24px', position: 'relative', overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '8px', fontSize: '0.95rem' }}>Total Balance</p>
-              <h2 style={{ fontSize: '2.5rem', margin: 0, fontWeight: '700' }}>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '4px', fontSize: '0.95rem' }}>Total Balance</p>
+              <h2 style={{ fontSize: '2.2rem', margin: 0, fontWeight: '700' }}>
                 ${balance.toFixed(2)}
               </h2>
+              <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', color: safeToSpend >= 0 ? 'var(--success)' : 'var(--danger)', fontWeight: '500', background: 'rgba(255,255,255,0.03)', padding: '4px 8px', borderRadius: '6px', border: '1px solid var(--border)', width: 'fit-content' }}>
+                <ShieldCheck size={14} />
+                <span>Safe to Spend: <strong style={{ fontSize: '0.88rem' }}>${safeToSpend.toFixed(2)}</strong></span>
+              </div>
             </div>
             <div style={{ background: 'var(--primary-bg)', color: 'var(--primary)', padding: '12px', borderRadius: '50%' }}>
               <DollarSign size={24} />
@@ -94,7 +119,7 @@ export default function Dashboard({ transactions }) {
               const cardTotal = bills.reduce((sum, b) => sum + parseFloat(b.amount), 0);
               return (
                 <div key={card} style={{ background: 'var(--bg-surface)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
+                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
                     <span style={{ fontWeight: '600', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <CreditCard size={16} style={{ color: 'var(--primary)' }} /> {card}
                     </span>
@@ -102,14 +127,26 @@ export default function Dashboard({ transactions }) {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                     {bills.map(b => (
-                      <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: '0.9rem', gap: '12px' }}>
+                      <div key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem', gap: '12px', padding: '2px 0' }}>
                         <div style={{ minWidth: 0, flex: 1 }}>
                           <div style={{ fontWeight: '500', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.title}</div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
                             {new Date(b.date).toLocaleDateString()} • {b.category} {b.subcategory && `> ${b.subcategory}`}
                           </div>
                         </div>
-                        <span style={{ fontWeight: '600', color: 'var(--text-primary)', flexShrink: 0 }}>${parseFloat(b.amount).toFixed(2)}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                          <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>${parseFloat(b.amount).toFixed(2)}</span>
+                          <button
+                            type="button"
+                            onClick={() => onUpdateTransaction && onUpdateTransaction(b.id, { ...b, status: 'paid' })}
+                            style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', color: 'var(--success)', opacity: 0.8, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 0.2s, opacity 0.2s' }}
+                            title="Mark as Paid"
+                            onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.opacity = '1' }}
+                            onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.opacity = '0.8' }}
+                          >
+                            <CheckCircle2 size={16} />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>

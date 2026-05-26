@@ -349,7 +349,11 @@ function App() {
           />
         ) : (
           <>
-            <Dashboard transactions={filteredTransactions} />
+            <Dashboard 
+              transactions={filteredTransactions} 
+              budgets={budgets} 
+              onUpdateTransaction={handleUpdateTransaction} 
+            />
         
         <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '24px', alignItems: 'flex-start' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px', alignItems: 'flex-start' }}>
@@ -373,6 +377,7 @@ function App() {
               transactions={filteredTransactions} 
               onDelete={handleDeleteTransaction}
               onEditRequest={(tx) => document.dispatchEvent(new CustomEvent('edit-transaction', { detail: tx }))}
+              onUpdateTransaction={handleUpdateTransaction}
               categories={customCategories}
               selectedMonth={selectedMonth}
             />

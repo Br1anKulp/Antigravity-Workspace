@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { ArrowUpRight, ArrowDownRight, Tag, Calendar, Search, Filter, Trash2, Pencil, Download, CreditCard, Clock, List, LayoutGrid } from 'lucide-react'
 import CalendarView from './CalendarView'
 
-export default function TransactionList({ transactions, onDelete, onEditRequest, categories = [], selectedMonth }) {
+export default function TransactionList({ transactions, onDelete, onEditRequest, onUpdateTransaction, categories = [], selectedMonth }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [viewMode, setViewMode] = useState('list')
@@ -153,9 +153,21 @@ export default function TransactionList({ transactions, onDelete, onEditRequest,
                     {t.isRecurring && <span style={{ fontSize: '0.8rem', background: 'var(--primary-bg)', color: 'var(--primary)', padding: '2px 6px', borderRadius: '4px', marginLeft: '6px' }}>↺</span>}
                   </h4>
                   {t.status === 'unpaid' && (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 6px', borderRadius: '12px', fontSize: '0.7rem', background: 'var(--warning)', color: '#000', fontWeight: '600' }}>
-                      <Clock size={10} /> Unpaid
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '2px 6px', borderRadius: '12px', fontSize: '0.7rem', background: 'var(--warning)', color: '#000', fontWeight: '600' }}>
+                        <Clock size={10} /> Unpaid
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => onUpdateTransaction && onUpdateTransaction(t.id, { ...t, status: 'paid' })}
+                        style={{ background: 'var(--success-bg)', color: 'var(--success)', border: 'none', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold', transition: 'transform 0.2s' }}
+                        title="Mark as Paid"
+                        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.15)'}
+                        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
+                      >
+                        ✓
+                      </button>
+                    </div>
                   )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
