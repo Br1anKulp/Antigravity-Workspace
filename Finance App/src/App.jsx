@@ -88,13 +88,41 @@ function App() {
       setTransactions(txs)
     })
 
-    const unsubscribeBudgets = onSnapshot(doc(db, 'budgets', `${householdId}-${selectedMonth}`), (docSnap) => {
+    const unsubscribeBudgets = onSnapshot(doc(db, 'budgets', `${householdId}-${selectedMonth}`), async (docSnap) => {
       if (docSnap.exists()) {
         setBudgets(docSnap.data())
+        setLoadingBudgets(false)
       } else {
-        setBudgets({})
+        // Automatically initialize categories from the most recent month
+        try {
+          const budgetsSnap = await getDocs(collection(db, 'budgets'));
+          let mostRecentDoc = null;
+          let mostRecentMonth = '';
+          
+          budgetsSnap.forEach(snap => {
+            if (!snap.id.startsWith(householdId)) return;
+            const parts = snap.id.split('-');
+            const monthStr = parts.slice(parts.length - 2).join('-'); // YYYY-MM
+            if (monthStr < selectedMonth && monthStr > mostRecentMonth) {
+              mostRecentMonth = monthStr;
+              mostRecentDoc = snap;
+            }
+          });
+
+          if (mostRecentDoc) {
+            const data = mostRecentDoc.data();
+            await setDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), data);
+            console.log(`Automatically initialized current month budget from ${mostRecentMonth}`);
+            setBudgets(data);
+          } else {
+            setBudgets({});
+          }
+        } catch (err) {
+          console.error("Auto budget initialization failed:", err);
+          setBudgets({});
+        }
+        setLoadingBudgets(false)
       }
-      setLoadingBudgets(false)
     })
 
     return () => {
@@ -133,52 +161,7 @@ function App() {
     migrateBudgetPath();
   }, [user, householdId, selectedMonth]);
 
-  // One-time cleanup: remove all hardcoded default categories from Firestore
-  useEffect(() => {
-    if (!user || !householdId) return;
-    const flagKey = `gs_defaults_purged_${householdId}`;
-    if (localStorage.getItem(flagKey)) return; // Already done
 
-    const DEFAULT_CATEGORIES = [
-      'Home Expenses', 'Transportation', 'Daily Living',
-      'Entertainment', 'Health', 'Personal', 'Savings', 'Donations', 'Misc'
-    ];
-
-    const purgeDefaults = async () => {
-      try {
-        // Get all budget docs for this household
-        const snapshot = await getDocs(collection(db, 'budgets'));
-        const promises = [];
-        snapshot.forEach(docSnap => {
-          if (!docSnap.id.startsWith(householdId)) return;
-          const data = docSnap.data();
-          let modified = false;
-          const newData = { ...data };
-
-          // Remove hardcoded defaults AND any corrupted numeric keys
-          Object.keys(newData).forEach(k => {
-            if (DEFAULT_CATEGORIES.includes(k) || (!isNaN(k) && k !== '')) {
-              delete newData[k];
-              modified = true;
-              console.log(`Purging default category "${k}" from ${docSnap.id}`);
-            }
-          });
-
-          if (modified) {
-            promises.push(setDoc(doc(db, 'budgets', docSnap.id), newData));
-          }
-        });
-
-        await Promise.all(promises);
-        localStorage.setItem(flagKey, 'true');
-        console.log('Default category purge complete.');
-      } catch (err) {
-        console.error('Purge error:', err);
-      }
-    };
-
-    purgeDefaults();
-  }, [user, householdId]);
 
 
 

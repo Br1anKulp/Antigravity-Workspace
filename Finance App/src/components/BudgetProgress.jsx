@@ -219,10 +219,13 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
   }
 
   const calculateCatLimit = (catData) => {
-    if (!catData?.subcategories) return 0
-    return Object.entries(catData.subcategories)
+    const subLimitSum = Object.entries(catData?.subcategories || {})
       .filter(([k]) => k !== '_order')
-      .reduce((sum, [, sub]) => sum + (parseFloat(sub.limit) || 0), 0)
+      .reduce((sum, [, sub]) => sum + (parseFloat(sub.limit) || 0), 0);
+    if (subLimitSum > 0 || Object.keys(catData?.subcategories || {}).length > 0) {
+      return subLimitSum;
+    }
+    return parseFloat(catData?.limit) || 0;
   }
 
   const toggleCategory = (cat) => {
@@ -279,6 +282,30 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
       alert('Failed to save subcategory.')
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleEditCatSaveDirect = async (cat, limitVal, dueVal) => {
+    if (!user) return
+    try {
+      await updateDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), {
+        [`${cat}.limit`]: parseFloat(limitVal) || 0,
+        [`${cat}.dueDate`]: dueVal || ''
+      })
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  const handleEditSubcatSaveDirect = async (cat, subName, limitVal, dueVal) => {
+    if (!user) return
+    const subcatData = { limit: parseFloat(limitVal) || 0, dueDate: dueVal || '' }
+    try {
+      await updateDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), {
+        [`${cat}.subcategories.${subName}`]: subcatData
+      })
+    } catch (err) {
+      console.error(err)
     }
   }
 
@@ -512,15 +539,14 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                             <span style={{ fontWeight: '600', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Editing: {cat}</span>
                             <div style={{ display: 'flex', gap: '8px' }}>
                               <input type="number" placeholder="Amount" min="0" step="0.01" value={editLimit} onChange={e => setEditLimit(e.target.value)}
+                                onBlur={() => handleEditCatSaveDirect(cat, editLimit, editDue)}
                                 style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem' }} inputMode="decimal" />
                               <input type="text" placeholder="Due day e.g. 1" value={editDue} onChange={e => setEditDue(e.target.value)}
+                                onBlur={() => handleEditCatSaveDirect(cat, editLimit, editDue)}
                                 style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem' }} />
                             </div>
                             <div style={{ display: 'flex', gap: '8px' }}>
-                              <button type="button" className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setEditingCat(null) }} style={{ flex: 1 }}>Cancel</button>
-                              <button type="submit" className="btn btn-primary" disabled={isSaving} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                                <Save size={14} /> {isSaving ? 'Saving...' : 'Save'}
-                              </button>
+                              <button type="button" className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setEditingCat(null) }} style={{ flex: 1 }}>Done</button>
                             </div>
                           </form>
                         ) : (
@@ -620,15 +646,14 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                                                 placeholder="Subcategory name" />
                                               <div style={{ display: 'flex', gap: '8px' }}>
                                                 <input type="number" placeholder="Amount" min="0" step="0.01" value={editLimit} onChange={e => setEditLimit(e.target.value)}
+                                                  onBlur={() => handleEditSubcatSaveDirect(cat, editName, editLimit, editDue)}
                                                   style={{ flex: 1, padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem' }} inputMode="decimal" />
                                                 <input type="text" placeholder="Due day e.g. 1" value={editDue} onChange={e => setEditDue(e.target.value)}
+                                                  onBlur={() => handleEditSubcatSaveDirect(cat, editName, editLimit, editDue)}
                                                   style={{ flex: 1, padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem' }} />
                                               </div>
                                               <div style={{ display: 'flex', gap: '8px' }}>
-                                                <button type="button" className="btn btn-ghost" onClick={() => setEditingSubcat(null)} style={{ flex: 1 }}>Cancel</button>
-                                                <button type="submit" className="btn btn-primary" disabled={isSaving} style={{ flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                                                  <Save size={13} /> {isSaving ? 'Saving...' : 'Save'}
-                                                </button>
+                                                <button type="button" className="btn btn-ghost" onClick={() => setEditingSubcat(null)} style={{ flex: 1 }}>Done</button>
                                               </div>
                                               <button type="button" className="btn btn-ghost" onClick={() => handleDeleteSubcat(cat, sub)}
                                                 style={{ color: 'var(--danger)', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
