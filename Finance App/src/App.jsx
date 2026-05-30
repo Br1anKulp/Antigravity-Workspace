@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Wallet, Sun, Moon, LogOut, ChevronLeft, ChevronRight, LayoutDashboard, BarChart2, ChevronDown, Calendar } from 'lucide-react'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, getDocs, setDoc, where, getDoc } from 'firebase/firestore'
@@ -31,6 +31,7 @@ function App() {
   });
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [pickerYear, setPickerYear] = useState(() => new Date().getFullYear());
+  const initializingRef = useRef(null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -95,6 +96,9 @@ function App() {
         setBudgets(docSnap.data())
         setLoadingBudgets(false)
       } else {
+        if (initializingRef.current === selectedMonth) return;
+        initializingRef.current = selectedMonth;
+
         // Automatically initialize categories from the most recent month
         try {
           const budgetsSnap = await getDocs(collection(db, 'budgets'));
@@ -115,15 +119,17 @@ function App() {
             const data = mostRecentDoc.data();
             await setDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), data);
             console.log(`Automatically initialized current month budget from ${mostRecentMonth}`);
-            setBudgets(data);
+            // Do NOT call setBudgets or setLoadingBudgets here. Let the real-time onSnapshot listener
+            // fire when setDoc completes, keeping state updates perfectly linear and safe.
           } else {
             setBudgets({});
+            setLoadingBudgets(false);
           }
         } catch (err) {
           console.error("Auto budget initialization failed:", err);
           setBudgets({});
+          setLoadingBudgets(false);
         }
-        setLoadingBudgets(false)
       }
     })
 
