@@ -49,12 +49,28 @@ export function checkUpcomingBills(budgets, transactions, selectedMonth, daysAhe
 
           if (!alreadyPaid) {
             const label = diffDays === 0 ? 'due TODAY' : `due in ${diffDays} day${diffDays > 1 ? 's' : ''}`;
-            new Notification(`💳 Bill Reminder: ${subName}`, {
-              body: `${subName} (${catName}) is ${label}. Don't forget to pay!`,
-              icon: '/icon-192x192.png',
-              tag: `bill-${subName}-${day}`, // prevents duplicates
-              badge: '/icon-192x192.png'
-            });
+            try {
+              new Notification(`💳 Bill Reminder: ${subName}`, {
+                body: `${subName} (${catName}) is ${label}. Don't forget to pay!`,
+                icon: '/icon-192x192.png',
+                tag: `bill-${subName}-${day}`, // prevents duplicates
+                badge: '/icon-192x192.png'
+              });
+            } catch (err) {
+              console.warn("Direct Notification constructor failed (expected on iOS), falling back to Service Worker registration:", err);
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.ready.then(registration => {
+                  registration.showNotification(`💳 Bill Reminder: ${subName}`, {
+                    body: `${subName} (${catName}) is ${label}. Don't forget to pay!`,
+                    icon: '/icon-192x192.png',
+                    tag: `bill-${subName}-${day}`, // prevents duplicates
+                    badge: '/icon-192x192.png'
+                  });
+                }).catch(swErr => {
+                  console.error("Service worker notification failed:", swErr);
+                });
+              }
+            }
           }
         }
       });
