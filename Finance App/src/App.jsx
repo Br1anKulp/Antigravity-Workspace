@@ -99,31 +99,34 @@ function App() {
         if (initializingRef.current === selectedMonth) return;
         initializingRef.current = selectedMonth;
 
-        // Automatically initialize categories from the most recent month
+        // Automatically initialize categories from the previous month directly using safe, single-doc getDoc
         try {
-          const budgetsSnap = await getDocs(collection(db, 'budgets'));
-          let mostRecentDoc = null;
-          let mostRecentMonth = '';
+          const [year, month] = selectedMonth.split('-').map(Number);
+          const prevMonthStr = month === 1 
+            ? `${year - 1}-12` 
+            : `${year}-${String(month - 1).padStart(2, '0')}`;
           
-          budgetsSnap.forEach(snap => {
-            if (!snap.id.startsWith(householdId)) return;
-            const parts = snap.id.split('-');
-            const monthStr = parts.slice(parts.length - 2).join('-'); // YYYY-MM
-            if (monthStr < selectedMonth && monthStr > mostRecentMonth) {
-              mostRecentMonth = monthStr;
-              mostRecentDoc = snap;
-            }
-          });
-
-          if (mostRecentDoc) {
-            const data = mostRecentDoc.data();
+          const prevDocSnap = await getDoc(doc(db, 'budgets', `${householdId}-${prevMonthStr}`));
+          
+          if (prevDocSnap.exists()) {
+            const data = prevDocSnap.data();
             await setDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), data);
-            console.log(`Automatically initialized current month budget from ${mostRecentMonth}`);
-            // Do NOT call setBudgets or setLoadingBudgets here. Let the real-time onSnapshot listener
-            // fire when setDoc completes, keeping state updates perfectly linear and safe.
+            console.log(`Automatically initialized current month budget from previous month ${prevMonthStr}`);
           } else {
-            setBudgets({});
-            setLoadingBudgets(false);
+            // Search two months back if previous month doesn't exist
+            const prevMonth2Str = month <= 2
+              ? `${year - 1}-${String(month + 10).padStart(2, '0')}`
+              : `${year}-${String(month - 2).padStart(2, '0')}`;
+              
+            const prev2DocSnap = await getDoc(doc(db, 'budgets', `${householdId}-${prevMonth2Str}`));
+            if (prev2DocSnap.exists()) {
+              const data = prev2DocSnap.data();
+              await setDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), data);
+              console.log(`Automatically initialized current month budget from two months back ${prevMonth2Str}`);
+            } else {
+              setBudgets({});
+              setLoadingBudgets(false);
+            }
           }
         } catch (err) {
           console.error("Auto budget initialization failed:", err);
