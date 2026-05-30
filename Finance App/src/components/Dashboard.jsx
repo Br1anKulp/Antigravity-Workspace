@@ -23,10 +23,24 @@ export default function Dashboard({ transactions, budgets = {}, onUpdateTransact
     if (cat.startsWith('_')) return total;
     const catData = budgets[cat];
     
-    // Sum of subcategory limits
+    // Sum of subcategory limits with due date multiplicity scaling
     const limit = Object.entries(catData?.subcategories || {})
       .filter(([k]) => k !== '_order')
-      .reduce((sum, [, sub]) => sum + (parseFloat(sub.limit) || 0), 0);
+      .reduce((sum, [, sub]) => {
+        const subData = typeof sub === 'object' ? sub : { limit: sub || 0, dueDate: '' }
+        const dueDays = String(subData.dueDate || '').split(',').map(d => d.trim()).filter(d => !isNaN(d) && d !== '')
+        const multiplier = dueDays.length > 0 ? dueDays.length : 1
+        return sum + ((parseFloat(subData.limit) || 0) * multiplier)
+      }, 0);
+    
+    // Category limit fallback to main limit if no subcategories, also scaled by due date multiplicity
+    const categoryLimit = limit > 0 || Object.keys(catData?.subcategories || {}).length > 0
+      ? limit
+      : (() => {
+          const mainDueDays = String(catData?.dueDate || '').split(',').map(d => d.trim()).filter(d => !isNaN(d) && d !== '')
+          const mainMultiplier = mainDueDays.length > 0 ? mainDueDays.length : 1
+          return (parseFloat(catData?.limit) || 0) * mainMultiplier
+        })();
     
     // Category spent
     const spent = transactions
@@ -43,7 +57,7 @@ export default function Dashboard({ transactions, budgets = {}, onUpdateTransact
         return sum;
       }, 0);
       
-    const remaining = Math.max(0, limit - spent);
+    const remaining = Math.max(0, categoryLimit - spent);
     return total + remaining;
   }, 0);
   

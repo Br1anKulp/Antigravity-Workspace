@@ -237,7 +237,11 @@ function App() {
     return transactions.filter(t => t.date && t.date.startsWith(selectedMonth));
   }, [transactions, selectedMonth]);
 
-  const displayMonthName = new Date(selectedMonth + "-02").toLocaleString('default', { month: 'long', year: 'numeric' });
+  const displayMonthName = useMemo(() => {
+    const [year, month] = selectedMonth.split('-').map(Number);
+    const d = new Date(year, month - 1, 2);
+    return d.toLocaleString('default', { month: 'long', year: 'numeric' });
+  }, [selectedMonth]);
 
   const categoriesConfig = useMemo(() => {
     const config = {};

@@ -221,11 +221,18 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
   const calculateCatLimit = (catData) => {
     const subLimitSum = Object.entries(catData?.subcategories || {})
       .filter(([k]) => k !== '_order')
-      .reduce((sum, [, sub]) => sum + (parseFloat(sub.limit) || 0), 0);
+      .reduce((sum, [, sub]) => {
+        const subData = typeof sub === 'object' ? sub : { limit: sub || 0, dueDate: '' }
+        const dueDays = String(subData.dueDate || '').split(',').map(d => d.trim()).filter(d => !isNaN(d) && d !== '')
+        const multiplier = dueDays.length > 0 ? dueDays.length : 1
+        return sum + ((parseFloat(subData.limit) || 0) * multiplier)
+      }, 0);
     if (subLimitSum > 0 || Object.keys(catData?.subcategories || {}).length > 0) {
       return subLimitSum;
     }
-    return parseFloat(catData?.limit) || 0;
+    const mainDueDays = String(catData?.dueDate || '').split(',').map(d => d.trim()).filter(d => !isNaN(d) && d !== '')
+    const mainMultiplier = mainDueDays.length > 0 ? mainDueDays.length : 1
+    return (parseFloat(catData?.limit) || 0) * mainMultiplier;
   }
 
   const toggleCategory = (cat) => {
@@ -630,7 +637,9 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                                   const subData = typeof subcategories[sub] === 'object'
                                     ? subcategories[sub]
                                     : { limit: subcategories[sub] || 0, dueDate: '' }
-                                  const subLimit = parseFloat(subData.limit) || 0
+                                  const subDueDays = String(subData.dueDate || '').split(',').map(d => d.trim()).filter(d => !isNaN(d) && d !== '')
+                                  const subMultiplier = subDueDays.length > 0 ? subDueDays.length : 1
+                                  const subLimit = (parseFloat(subData.limit) || 0) * subMultiplier
                                   const subPercentRaw = subLimit > 0 ? (subSpent / subLimit) * 100 : (subSpent > 0 ? 101 : 0)
                                   const subColor = getColor(subPercentRaw)
 
