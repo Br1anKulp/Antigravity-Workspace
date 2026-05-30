@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Wallet, Sun, Moon, LogOut, ChevronLeft, ChevronRight, LayoutDashboard, BarChart2 } from 'lucide-react'
+import { Wallet, Sun, Moon, LogOut, ChevronLeft, ChevronRight, LayoutDashboard, BarChart2, ChevronDown, Calendar } from 'lucide-react'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, getDocs, setDoc, where, getDoc } from 'firebase/firestore'
 import { auth, db } from './firebase'
@@ -29,6 +29,8 @@ function App() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
+  const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [pickerYear, setPickerYear] = useState(() => new Date().getFullYear());
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -221,17 +223,7 @@ function App() {
     }
   }
 
-  const handlePrevMonth = () => {
-    const [year, month] = selectedMonth.split('-').map(Number);
-    const d = new Date(year, month - 2, 1);
-    setSelectedMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-  }
 
-  const handleNextMonth = () => {
-    const [year, month] = selectedMonth.split('-').map(Number);
-    const d = new Date(year, month, 1);
-    setSelectedMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-  }
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter(t => t.date && t.date.startsWith(selectedMonth));
@@ -298,16 +290,132 @@ function App() {
       </header>
 
       <main>
-        <div className="glass-panel" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '12px', marginBottom: '24px', gap: '16px' }}>
-          <button className="btn btn-ghost btn-icon" onClick={handlePrevMonth}>
-            <ChevronLeft size={20} />
-          </button>
-          <h2 style={{ margin: 0, minWidth: '180px', textAlign: 'center', fontSize: '1.2rem', fontWeight: '600' }}>
-            {displayMonthName}
-          </h2>
-          <button className="btn btn-ghost btn-icon" onClick={handleNextMonth}>
-            <ChevronRight size={20} />
-          </button>
+        <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
+          <div 
+            className="glass-panel" 
+            style={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              alignItems: 'center', 
+              padding: '12px 24px', 
+              cursor: 'pointer', 
+              gap: '10px',
+              userSelect: 'none',
+              transition: 'all 0.2s ease',
+              boxShadow: 'var(--shadow-sm)',
+            }}
+            onClick={() => {
+              setShowMonthPicker(!showMonthPicker);
+              const [y] = selectedMonth.split('-').map(Number);
+              setPickerYear(y);
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
+          >
+            <Calendar size={18} style={{ color: 'var(--primary)' }} />
+            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {displayMonthName}
+              <ChevronDown size={16} style={{ 
+                transform: showMonthPicker ? 'rotate(180deg)' : 'rotate(0deg)', 
+                transition: 'transform 0.2s ease',
+                color: 'var(--text-secondary)'
+              }} />
+            </h2>
+          </div>
+
+          {showMonthPicker && (
+            <>
+              {/* Overlay backdrop to close picker when clicking outside */}
+              <div 
+                style={{ 
+                  position: 'fixed', 
+                  top: 0, 
+                  left: 0, 
+                  right: 0, 
+                  bottom: 0, 
+                  zIndex: 998 
+                }} 
+                onClick={() => setShowMonthPicker(false)}
+              />
+              
+              {/* Dropdown Month Picker */}
+              <div 
+                className="glass-panel" 
+                style={{ 
+                  position: 'absolute', 
+                  top: '100%', 
+                  marginTop: '8px', 
+                  padding: '16px', 
+                  zIndex: 999, 
+                  width: '320px',
+                  boxShadow: 'var(--shadow-md)',
+                  border: 'var(--border) 1px solid',
+                  animation: 'fadeIn 0.2s ease-out',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '12px'
+                }}
+              >
+                {/* Year Selection Row */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>
+                  <button 
+                    className="btn btn-ghost btn-icon" 
+                    style={{ minWidth: '36px', minHeight: '36px', padding: '6px' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPickerYear(y => y - 1);
+                    }}
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span style={{ fontWeight: '700', fontSize: '1.15rem', color: 'var(--text-primary)', fontFamily: 'var(--font-heading)' }}>
+                    {pickerYear}
+                  </span>
+                  <button 
+                    className="btn btn-ghost btn-icon" 
+                    style={{ minWidth: '36px', minHeight: '36px', padding: '6px' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPickerYear(y => y + 1);
+                    }}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+
+                {/* 3x4 Month Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                  {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((monName, idx) => {
+                    const monthValStr = String(idx + 1).padStart(2, '0');
+                    const targetMonthStr = `${pickerYear}-${monthValStr}`;
+                    const isSelected = selectedMonth === targetMonthStr;
+                    
+                    return (
+                      <button
+                        key={monName}
+                        className={`btn ${isSelected ? 'btn-primary' : 'btn-ghost'}`}
+                        style={{ 
+                          padding: '8px 4px', 
+                          fontSize: '0.9rem', 
+                          borderRadius: '8px',
+                          fontWeight: isSelected ? '600' : '400',
+                          border: isSelected ? 'none' : '1px solid var(--border)',
+                          minHeight: '36px'
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedMonth(targetMonthStr);
+                          setShowMonthPicker(false);
+                        }}
+                      >
+                        {monName}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Tab Navigation */}
