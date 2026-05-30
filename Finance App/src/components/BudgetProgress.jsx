@@ -75,84 +75,70 @@ function CalendarDayPicker({ value, onChange, onBlur }) {
       </div>
 
       {isOpen && (
-        <>
-          {/* Overlay to close picker */}
-          <div 
-            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000 }} 
+        <div 
+          className="glass-panel" 
+          style={{ 
+            marginTop: '6px', 
+            padding: '12px', 
+            boxShadow: 'var(--shadow-sm)',
+            border: 'var(--border) 1px solid',
+            background: 'var(--bg-surface)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '10px',
+            width: '100%',
+            boxSizing: 'border-box'
+          }}
+        >
+          <div style={{ textAlign: 'center', fontWeight: '600', fontSize: '0.85rem', color: 'var(--text-secondary)', paddingBottom: '4px', borderBottom: '1px solid var(--border)', width: '100%' }}>
+            Select Monthly Due Date(s)
+          </div>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
+            {days.map(day => {
+              const isSelected = selectedDays.includes(day);
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  onClick={() => toggleDay(day)}
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    borderRadius: '50%',
+                    border: isSelected ? 'none' : '1px solid var(--border)',
+                    background: isSelected ? 'var(--primary)' : 'var(--bg-base)',
+                    color: isSelected ? '#fff' : 'var(--text-primary)',
+                    fontSize: '0.8rem',
+                    fontWeight: isSelected ? '600' : '400',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.borderColor = 'var(--primary)'; }}
+                  onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.borderColor = 'var(--border)'; }}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+          
+          <button 
+            type="button" 
+            className="btn btn-primary" 
             onClick={() => {
               setIsOpen(false);
               if (onBlur) onBlur();
             }}
-          />
-          
-          {/* Calendar Grid Dropdown */}
-          <div 
-            className="glass-panel" 
-            style={{ 
-              position: 'absolute', 
-              top: '100%', 
-              left: '50%',
-              transform: 'translateX(-50%)',
-              marginTop: '6px', 
-              padding: '12px', 
-              zIndex: 1001, 
-              width: '260px', 
-              boxShadow: 'var(--shadow-md)',
-              border: 'var(--border) 1px solid',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '10px'
-            }}
+            style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '6px', width: '100%' }}
           >
-            <div style={{ textAlign: 'center', fontWeight: '600', fontSize: '0.85rem', color: 'var(--text-secondary)', paddingBottom: '4px', borderBottom: '1px solid var(--border)' }}>
-              Select Monthly Due Date(s)
-            </div>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
-              {days.map(day => {
-                const isSelected = selectedDays.includes(day);
-                return (
-                  <button
-                    key={day}
-                    type="button"
-                    onClick={() => toggleDay(day)}
-                    style={{
-                      width: '28px',
-                      height: '28px',
-                      borderRadius: '50%',
-                      border: isSelected ? 'none' : '1px solid var(--border)',
-                      background: isSelected ? 'var(--primary)' : 'var(--bg-base)',
-                      color: isSelected ? '#fff' : 'var(--text-primary)',
-                      fontSize: '0.8rem',
-                      fontWeight: isSelected ? '600' : '400',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      transition: 'all 0.15s ease'
-                    }}
-                    onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.borderColor = 'var(--primary)'; }}
-                    onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.borderColor = 'var(--border)'; }}
-                  >
-                    {day}
-                  </button>
-                );
-              })}
-            </div>
-            
-            <button 
-              type="button" 
-              className="btn btn-primary" 
-              onClick={() => {
-                setIsOpen(false);
-                if (onBlur) onBlur();
-              }}
-              style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '6px' }}
-            >
-              Done
-            </button>
-          </div>
-        </>
+            Done
+          </button>
+        </div>
       )}
     </div>
   );
