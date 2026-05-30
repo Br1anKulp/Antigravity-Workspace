@@ -18,7 +18,7 @@ export default function TransactionList({ transactions, onDelete, onEditRequest,
   const filterCategories = ['All', ...categories]
 
   const filteredTransactions = transactions.filter(t => {
-    const matchesSearch = t.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    const matchesSearch = (t.title || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
                           (t.subcategory && t.subcategory.toLowerCase().includes(searchTerm.toLowerCase())) ||
                           (t.splits && t.splits.some(s => s.subcategory && s.subcategory.toLowerCase().includes(searchTerm.toLowerCase())))
     const matchesCategory = categoryFilter === 'All' || t.category === categoryFilter
