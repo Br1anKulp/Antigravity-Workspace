@@ -719,15 +719,8 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                             <span style={{ fontWeight: '600', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Editing: {cat}</span>
                             <div style={{ display: 'flex', gap: '8px' }}>
                               <input type="number" placeholder="Amount" min="0" step="0.01" value={editLimit} onChange={e => setEditLimit(e.target.value)}
-                                onBlur={() => handleEditCatSaveDirect(cat, editLimit, editDue)}
+                                onBlur={() => handleEditCatSaveDirect(cat, editLimit, '')}
                                 style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem' }} inputMode="decimal" />
-                              <CalendarDayPicker 
-                                value={editDue} 
-                                onChange={(val) => {
-                                  setEditDue(val);
-                                  handleEditCatSaveDirect(cat, editLimit, val);
-                                }} 
-                              />
                             </div>
                             <div style={{ display: 'flex', gap: '8px' }}>
                               <button type="button" className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setEditingCat(null) }} style={{ flex: 1 }}>Done</button>
@@ -759,7 +752,7 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                                       className="btn btn-ghost btn-icon"
                                       onClick={(e) => startEditCat(e, cat, catData)}
                                       style={{ padding: '3px', color: 'var(--text-secondary)', opacity: 0.6 }}
-                                      title="Edit due date"
+                                      title="Edit category limit"
                                     >
                                       <Pencil size={12} />
                                     </button>
@@ -772,7 +765,6 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                                       <Trash2 size={12} />
                                     </button>
                                   </div>
-                                  {renderDueDate(catData.dueDate)}
                                 </div>
                               </div>
 
@@ -977,10 +969,6 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                 value={newCatName}
                 onChange={e => setNewCatName(e.target.value)}
                 style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem', boxSizing: 'border-box' }}
-              />
-              <CalendarDayPicker 
-                value={newCatDue} 
-                onChange={setNewCatDue} 
               />
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button type="button" className="btn btn-ghost" onClick={() => { setAddingNewCat(false); setNewCatName(''); setNewCatDue('') }} style={{ flex: 1 }}>Cancel</button>
