@@ -344,10 +344,12 @@ function App() {
                 style={{ 
                   position: 'absolute', 
                   top: '100%', 
+                  left: '50%',
+                  transform: 'translateX(-50%)',
                   marginTop: '8px', 
                   padding: '16px', 
                   zIndex: 999, 
-                  width: '320px',
+                  width: '290px',
                   boxShadow: 'var(--shadow-md)',
                   border: 'var(--border) 1px solid',
                   animation: 'fadeIn 0.2s ease-out',
