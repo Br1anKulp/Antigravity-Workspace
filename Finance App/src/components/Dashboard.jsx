@@ -70,7 +70,7 @@ export default function Dashboard({ transactions, budgets = {}, onUpdateTransact
         <div className="glass-panel" style={{ padding: '24px', position: 'relative', overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '4px', fontSize: '0.95rem' }}>Total Balance</p>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '4px', fontSize: '0.95rem' }}>Total Remaining</p>
               <h2 style={{ fontSize: '2.2rem', margin: 0, fontWeight: '700' }}>
                 ${balance.toFixed(2)}
               </h2>
@@ -102,7 +102,7 @@ export default function Dashboard({ transactions, budgets = {}, onUpdateTransact
         <div className="glass-panel" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '8px', fontSize: '0.95rem' }}>Total Expenses</p>
+              <p style={{ color: 'var(--text-secondary)', marginBottom: '8px', fontSize: '0.95rem' }}>Total Spent</p>
               <h2 style={{ fontSize: '2rem', margin: 0, color: 'var(--danger)' }}>
                 -${expenses.toFixed(2)}
               </h2>
