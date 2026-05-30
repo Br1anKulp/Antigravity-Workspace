@@ -62,12 +62,25 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   
   const [selectedMonth, setSelectedMonth] = useState(() => {
+    const saved = localStorage.getItem('selected-month');
+    if (saved) {
+      console.log('Loaded selectedMonth from localStorage:', saved);
+      return saved;
+    }
     const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    console.log('No saved month, using default:', defaultMonth);
+    return defaultMonth;
   });
+
   const [showMonthPicker, setShowMonthPicker] = useState(false);
   const [pickerYear, setPickerYear] = useState(() => new Date().getFullYear());
   const initializingRef = useRef(null);
+
+  // Persist selected month across sessions
+  useEffect(() => {
+    localStorage.setItem('selected-month', selectedMonth);
+  }, [selectedMonth]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
