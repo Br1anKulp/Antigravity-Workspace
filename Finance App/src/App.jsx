@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, Component } from 'react'
 import { Wallet, Sun, Moon, LogOut, ChevronLeft, ChevronRight, LayoutDashboard, BarChart2, ChevronDown, Calendar } from 'lucide-react'
 import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { collection, query, onSnapshot, addDoc, deleteDoc, doc, updateDoc, getDocs, setDoc, where, getDoc } from 'firebase/firestore'
@@ -11,6 +11,42 @@ import Auth from './components/Auth'
 import BudgetProgress from './components/BudgetProgress'
 import Insights from './components/Insights'
 import { requestNotificationPermission, checkUpcomingBills } from './utils/notifications'
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="glass-panel" style={{ padding: '32px', margin: '24px', textAlign: 'center', border: '1px solid var(--danger)', background: 'rgba(239, 68, 68, 0.05)' }}>
+          <h3 style={{ color: 'var(--danger)', marginBottom: '12px', fontWeight: '600' }}>Something went wrong loading this section</h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '16px', wordBreak: 'break-all', fontFamily: 'monospace' }}>
+            {this.state.error?.toString() || 'Unknown rendering error'}
+          </p>
+          <button 
+            className="btn btn-primary" 
+            onClick={() => window.location.reload()}
+          >
+            Reload Application
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 function App() {
   const [theme, setTheme] = useState(() => {
@@ -447,6 +483,7 @@ function App() {
           </button>
         </div>
 
+        <ErrorBoundary>
         {activeTab === 'insights' ? (
           <Insights
             transactions={transactions}
@@ -491,6 +528,7 @@ function App() {
           </div>
         </div>
         </>)}
+        </ErrorBoundary>
       </main>
     </div>
   )
