@@ -1,7 +1,213 @@
-import React, { useState, useEffect } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import React, { useState, useEffect, useMemo } from 'react'
+import { Plus, Trash2, Calendar } from 'lucide-react'
 
-export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, customCategories }) {
+// ─── Custom Transaction Date Picker (Monthly Calendar Grid) ─────────────────────
+function TransactionDatePicker({ value, onChange, selectedMonth, singleSelect }) {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  const parsedDates = useMemo(() => {
+    return Array.isArray(value) ? value : [];
+  }, [value]);
+
+  const [yearStr, monthStr] = (selectedMonth || new Date().toISOString().slice(0, 7)).split('-');
+  const year = parseInt(yearStr);
+  const month = parseInt(monthStr);
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June', 
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const totalDays = new Date(year, month, 0).getDate();
+  const startDayOfWeek = new Date(year, month - 1, 1).getDay();
+
+  const toggleDate = (day) => {
+    const paddedMonth = String(month).padStart(2, '0');
+    const paddedDay = String(day).padStart(2, '0');
+    const dateStr = `${year}-${paddedMonth}-${paddedDay}`;
+
+    if (singleSelect) {
+      onChange([dateStr]);
+      setIsOpen(false);
+    } else {
+      if (parsedDates.includes(dateStr)) {
+        if (parsedDates.length > 1) {
+          onChange(parsedDates.filter(d => d !== dateStr));
+        }
+      } else {
+        onChange([...parsedDates, dateStr].sort());
+      }
+    }
+  };
+
+  const selectToday = () => {
+    const today = new Date();
+    const localDateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    onChange([localDateStr]);
+    setIsOpen(false);
+  };
+
+  const daysGrid = [];
+  for (let i = 0; i < startDayOfWeek; i++) {
+    daysGrid.push({ day: '', fullDate: null, isCurrentMonth: false });
+  }
+  for (let d = 1; d <= totalDays; d++) {
+    const paddedMonth = String(month).padStart(2, '0');
+    const paddedDay = String(d).padStart(2, '0');
+    const fullDate = `${year}-${paddedMonth}-${paddedDay}`;
+    daysGrid.push({ day: d, fullDate, isCurrentMonth: true });
+  }
+
+  const formatReadableDate = (dateStr) => {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-');
+    const mName = monthNames[parseInt(m) - 1]?.slice(0, 3);
+    return `${mName} ${parseInt(d)}`;
+  };
+
+  return (
+    <div style={{ position: 'relative', width: '100%' }}>
+      <div 
+        className="glass-panel" 
+        onClick={() => setIsOpen(!isOpen)}
+        style={{ 
+          padding: '10px 12px', 
+          borderRadius: '8px', 
+          border: '1px solid var(--border)', 
+          background: 'var(--bg-base)', 
+          color: 'var(--text-primary)', 
+          fontSize: '0.95rem',
+          cursor: 'pointer',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          minHeight: '44px',
+          boxSizing: 'border-box'
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '85%' }}>
+          {parsedDates.length > 0 
+            ? parsedDates.map(d => formatReadableDate(d)).join(', ') 
+            : 'Select transaction date...'}
+        </span>
+        <Calendar size={18} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+      </div>
+
+      {isOpen && (
+        <>
+          <div 
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000 }} 
+            onClick={() => setIsOpen(false)}
+          />
+          <div 
+            className="glass-panel" 
+            style={{ 
+              position: 'absolute', 
+              top: '100%', 
+              right: 0,
+              marginTop: '6px', 
+              padding: '14px', 
+              zIndex: 1001, 
+              width: '280px', 
+              boxShadow: 'var(--shadow-lg)',
+              border: 'var(--border) 1px solid',
+              background: 'var(--bg-surface)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '6px', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                {monthNames[month - 1]} {year}
+              </span>
+              <button 
+                type="button" 
+                onClick={selectToday}
+                style={{ 
+                  background: 'rgba(255,255,255,0.05)', 
+                  border: '1px solid var(--border)', 
+                  padding: '2px 8px', 
+                  borderRadius: '4px', 
+                  fontSize: '0.75rem', 
+                  color: 'var(--primary)', 
+                  cursor: 'pointer',
+                  fontWeight: '600'
+                }}
+              >
+                Today
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center' }}>
+              {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
+                <span key={day} style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)' }}>
+                  {day}
+                </span>
+              ))}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
+              {daysGrid.map((item, idx) => {
+                if (!item.isCurrentMonth) {
+                  return <div key={`empty-${idx}`} style={{ width: '28px', height: '28px' }} />;
+                }
+
+                const isSelected = parsedDates.includes(item.fullDate);
+                const todayStr = new Date().toISOString().split('T')[0];
+                const isToday = item.fullDate === todayStr;
+
+                return (
+                  <button
+                    key={item.fullDate}
+                    type="button"
+                    onClick={() => toggleDate(item.day)}
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '50%',
+                      border: isSelected 
+                        ? 'none' 
+                        : isToday 
+                          ? '1px dashed var(--primary)' 
+                          : '1px solid transparent',
+                      background: isSelected ? 'var(--primary)' : 'transparent',
+                      color: isSelected ? '#fff' : 'var(--text-primary)',
+                      fontSize: '0.8rem',
+                      fontWeight: isSelected || isToday ? '600' : '400',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+                    onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    {item.day}
+                  </button>
+                );
+              })}
+            </div>
+            
+            {!singleSelect && (
+              <button 
+                type="button" 
+                className="btn btn-primary" 
+                onClick={() => setIsOpen(false)}
+                style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '6px', width: '100%', marginTop: '4px' }}
+              >
+                Done
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, customCategories, selectedMonth }) {
   const [isOpen, setIsOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
   
@@ -193,43 +399,14 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
           </div>
           <div>
             <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-              {editingId ? 'Date' : 'Dates'}
+              {editingId ? 'Transaction Date' : 'Transaction Date(s)'}
             </label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {formData.dates.map((d, index) => (
-                <div key={index} style={{ display: 'flex', gap: '8px' }}>
-                  <input 
-                    type="date" 
-                    required
-                    value={d}
-                    onChange={e => {
-                      const newDates = [...formData.dates];
-                      newDates[index] = e.target.value;
-                      setFormData({ ...formData, dates: newDates });
-                    }}
-                    style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem' }}
-                  />
-                  {!editingId && formData.dates.length > 1 && (
-                    <button type="button" className="btn btn-ghost btn-icon" onClick={() => {
-                      const newDates = formData.dates.filter((_, i) => i !== index);
-                      setFormData({ ...formData, dates: newDates });
-                    }} style={{ color: 'var(--danger)', padding: '0 12px' }}>
-                      <Trash2 size={16} />
-                    </button>
-                  )}
-                </div>
-              ))}
-              {!editingId && (
-                <button 
-                  type="button" 
-                  className="btn btn-ghost" 
-                  onClick={() => setFormData({ ...formData, dates: [...formData.dates, new Date().toISOString().split('T')[0]] })}
-                  style={{ fontSize: '0.85rem', padding: '6px', width: 'fit-content', color: 'var(--primary)', marginTop: '-4px' }}
-                >
-                  <Plus size={14} /> Add another date
-                </button>
-              )}
-            </div>
+            <TransactionDatePicker 
+              value={formData.dates} 
+              onChange={newDates => setFormData({ ...formData, dates: newDates })} 
+              selectedMonth={selectedMonth} 
+              singleSelect={!!editingId} 
+            />
           </div>
           
           {formData.type === 'expense' && (

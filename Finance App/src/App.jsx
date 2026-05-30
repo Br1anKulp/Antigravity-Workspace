@@ -515,7 +515,7 @@ function App() {
 
             {/* Right Column: Transactions */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              <TransactionForm onAdd={handleAddTransaction} onUpdate={handleUpdateTransaction} categoriesConfig={categoriesConfig} customCategories={customCategories} />
+              <TransactionForm onAdd={handleAddTransaction} onUpdate={handleUpdateTransaction} categoriesConfig={categoriesConfig} customCategories={customCategories} selectedMonth={selectedMonth} />
             <TransactionList 
               transactions={filteredTransactions} 
               onDelete={handleDeleteTransaction}
