@@ -838,7 +838,7 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                                                      <input type="text" required value={editName} onChange={e => setEditName(e.target.value)}
                                                        style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem', boxSizing: 'border-box' }}
                                                        placeholder="Subcategory name" />
-                                                     <div style={{ display: 'flex', gap: '8px' }}>
+                                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
                                                        <input type="number" placeholder="Amount" min="0" step="0.01" value={editLimit} onChange={e => setEditLimit(e.target.value)}
                                                          onBlur={() => handleEditSubcatSaveDirect(cat, editName, editLimit, editDue)}
                                                          style={{ flex: 1, padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem' }} inputMode="decimal" />
@@ -912,7 +912,7 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                               <span style={{ fontWeight: '600', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>New Subcategory</span>
                               <input type="text" placeholder="Subcategory name" required autoFocus value={newSubName} onChange={e => setNewSubName(e.target.value)}
                                 style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem', boxSizing: 'border-box' }} />
-                              <div style={{ display: 'flex', gap: '8px' }}>
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
                                 <input type="number" placeholder="Budget amount" min="0" step="0.01" value={newSubLimit} onChange={e => setNewSubLimit(e.target.value)}
                                   style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem' }} inputMode="decimal" />
                                 <CalendarDayPicker 
