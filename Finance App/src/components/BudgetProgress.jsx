@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { Calendar, ChevronDown, ChevronRight, Plus, Pencil, Save, Trash2, GripVertical, Copy } from 'lucide-react'
 import { doc, setDoc, getDoc, updateDoc, deleteField, collection, getDocs, query, where } from 'firebase/firestore'
 import { db } from '../firebase'
@@ -18,6 +18,145 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+
+// ─── Monthly Day Grid Calendar Picker ──────────────────────────────────────────
+function CalendarDayPicker({ value, onChange, onBlur }) {
+  const [isOpen, setIsOpen] = useState(false);
+  
+  // Parse existing values
+  const selectedDays = useMemo(() => {
+    return String(value || '')
+      .split(',')
+      .map(d => parseInt(d.trim()))
+      .filter(d => !isNaN(d) && d >= 1 && d <= 31);
+  }, [value]);
+
+  const toggleDay = (day) => {
+    let newDays;
+    if (selectedDays.includes(day)) {
+      newDays = selectedDays.filter(d => d !== day);
+    } else {
+      newDays = [...selectedDays, day].sort((a, b) => a - b);
+    }
+    const val = newDays.join(', ');
+    onChange(val);
+  };
+
+  // Generate 31 days
+  const days = Array.from({ length: 31 }, (_, i) => i + 1);
+
+  return (
+    <div style={{ position: 'relative', width: '100%' }}>
+      {/* Visual trigger input */}
+      <div 
+        className="glass-panel" 
+        onClick={() => setIsOpen(!isOpen)}
+        style={{ 
+          padding: '10px', 
+          borderRadius: '6px', 
+          border: '1px solid var(--border)', 
+          background: 'var(--bg-surface)', 
+          color: value ? 'var(--text-primary)' : 'var(--text-secondary)', 
+          fontSize: '0.95rem',
+          cursor: 'pointer',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          minHeight: '42px',
+          boxSizing: 'border-box'
+        }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '85%' }}>
+          {selectedDays.length > 0 
+            ? `Due on: ${selectedDays.map(d => `${d}${d === 1 ? 'st' : d === 2 ? 'nd' : d === 3 ? 'rd' : 'th'}`).join(', ')}` 
+            : 'Select due day(s)...'}
+        </span>
+        <Calendar size={16} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+      </div>
+
+      {isOpen && (
+        <>
+          {/* Overlay to close picker */}
+          <div 
+            style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000 }} 
+            onClick={() => {
+              setIsOpen(false);
+              if (onBlur) onBlur();
+            }}
+          />
+          
+          {/* Calendar Grid Dropdown */}
+          <div 
+            className="glass-panel" 
+            style={{ 
+              position: 'absolute', 
+              top: '100%', 
+              left: '50%',
+              transform: 'translateX(-50%)',
+              marginTop: '6px', 
+              padding: '12px', 
+              zIndex: 1001, 
+              width: '260px', 
+              boxShadow: 'var(--shadow-md)',
+              border: 'var(--border) 1px solid',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '10px'
+            }}
+          >
+            <div style={{ textAlign: 'center', fontWeight: '600', fontSize: '0.85rem', color: 'var(--text-secondary)', paddingBottom: '4px', borderBottom: '1px solid var(--border)' }}>
+              Select Monthly Due Date(s)
+            </div>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px' }}>
+              {days.map(day => {
+                const isSelected = selectedDays.includes(day);
+                return (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => toggleDay(day)}
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '50%',
+                      border: isSelected ? 'none' : '1px solid var(--border)',
+                      background: isSelected ? 'var(--primary)' : 'var(--bg-base)',
+                      color: isSelected ? '#fff' : 'var(--text-primary)',
+                      fontSize: '0.8rem',
+                      fontWeight: isSelected ? '600' : '400',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.borderColor = 'var(--primary)'; }}
+                    onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.borderColor = 'var(--border)'; }}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+            
+            <button 
+              type="button" 
+              className="btn btn-primary" 
+              onClick={() => {
+                setIsOpen(false);
+                if (onBlur) onBlur();
+              }}
+              style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '6px' }}
+            >
+              Done
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 // ─── Sortable Category Row ────────────────────────────────────────────────────
 function SortableCategoryRow({ id, children }) {
@@ -191,6 +330,31 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
+  const getSubInstanceSpent = (txsArray = [], subDueDays = [], targetDay = null) => {
+    if (!Array.isArray(txsArray)) return 0;
+    
+    const parsedDays = subDueDays.map(d => parseInt(d)).filter(d => !isNaN(d) && d >= 1 && d <= 31);
+    if (parsedDays.length <= 1 || !targetDay) {
+      return txsArray.reduce((sum, tx) => sum + tx.amount, 0);
+    }
+    
+    const sortedDays = [...parsedDays].sort((a, b) => a - b);
+    const targetDayInt = parseInt(targetDay);
+    
+    return txsArray
+      .filter(tx => {
+        const dueDaysLessOrEqual = sortedDays.filter(d => tx.day >= d);
+        let assignedDay;
+        if (dueDaysLessOrEqual.length > 0) {
+          assignedDay = dueDaysLessOrEqual[dueDaysLessOrEqual.length - 1];
+        } else {
+          assignedDay = sortedDays[0];
+        }
+        return assignedDay === targetDayInt;
+      })
+      .reduce((sum, tx) => sum + tx.amount, 0);
+  };
+
   const getPrevMonth = (curr) => {
     let [year, month] = curr.split('-').map(Number)
     if (month === 1) { year -= 1; month = 12 } else { month -= 1 }
@@ -461,6 +625,9 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
   transactions
     .filter(t => t.type === 'expense')
     .forEach(t => {
+      // Parse transaction date day
+      const txDay = t.date ? new Date(t.date).getDate() : 1;
+
       if (t.splits?.length > 0) {
         t.splits.forEach(split => {
           const splitCat = split.category || t.category;
@@ -468,7 +635,10 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
           if (categorySpent[splitCat]) {
             categorySpent[splitCat].total += amt;
             if (split.subcategory) {
-              categorySpent[splitCat].subs[split.subcategory] = (categorySpent[splitCat].subs[split.subcategory] || 0) + amt;
+              if (!categorySpent[splitCat].subs[split.subcategory]) {
+                categorySpent[splitCat].subs[split.subcategory] = [];
+              }
+              categorySpent[splitCat].subs[split.subcategory].push({ amount: amt, day: txDay });
             }
           }
         });
@@ -478,7 +648,10 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
         if (categorySpent[cat]) {
           categorySpent[cat].total += amt;
           if (t.subcategory) {
-            categorySpent[cat].subs[t.subcategory] = (categorySpent[cat].subs[t.subcategory] || 0) + amt;
+            if (!categorySpent[cat].subs[t.subcategory]) {
+              categorySpent[cat].subs[t.subcategory] = [];
+            }
+            categorySpent[cat].subs[t.subcategory].push({ amount: amt, day: txDay });
           }
         }
       }
@@ -548,9 +721,13 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                               <input type="number" placeholder="Amount" min="0" step="0.01" value={editLimit} onChange={e => setEditLimit(e.target.value)}
                                 onBlur={() => handleEditCatSaveDirect(cat, editLimit, editDue)}
                                 style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem' }} inputMode="decimal" />
-                              <input type="text" placeholder="Due day e.g. 1" value={editDue} onChange={e => setEditDue(e.target.value)}
-                                onBlur={() => handleEditCatSaveDirect(cat, editLimit, editDue)}
-                                style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem' }} />
+                              <CalendarDayPicker 
+                                value={editDue} 
+                                onChange={(val) => {
+                                  setEditDue(val);
+                                  handleEditCatSaveDirect(cat, editLimit, val);
+                                }} 
+                              />
                             </div>
                             <div style={{ display: 'flex', gap: '8px' }}>
                               <button type="button" className="btn btn-ghost" onClick={(e) => { e.stopPropagation(); setEditingCat(null) }} style={{ flex: 1 }}>Done</button>
@@ -629,87 +806,126 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                             </div>
                           )}
 
-                          <SortableContext items={allSubs.map(s => `${cat}::${s}`)} strategy={verticalListSortingStrategy}>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          {(() => {
+                             const sortableItems = [];
+                             allSubs.forEach(sub => {
+                               const subData = typeof subcategories[sub] === 'object' ? subcategories[sub] : { limit: subcategories[sub] || 0, dueDate: '' };
+                               const subDueDays = String(subData.dueDate || '').split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d) && d >= 1 && d <= 31);
+                               const sortedDays = [...subDueDays].sort((a, b) => a - b);
+                               if (sortedDays.length > 1) {
+                                 sortedDays.forEach(day => sortableItems.push(`${cat}::${sub}::${day}`));
+                               } else {
+                                 sortableItems.push(`${cat}::${sub}`);
+                               }
+                             });
 
-                                {allSubs.map(sub => {
-                                  const subSpent = categorySpent[cat]?.subs[sub] || 0
-                                  const subData = typeof subcategories[sub] === 'object'
-                                    ? subcategories[sub]
-                                    : { limit: subcategories[sub] || 0, dueDate: '' }
-                                  const subDueDays = String(subData.dueDate || '').split(',').map(d => d.trim()).filter(d => !isNaN(d) && d !== '')
-                                  const subMultiplier = subDueDays.length > 0 ? subDueDays.length : 1
-                                  const subLimit = (parseFloat(subData.limit) || 0) * subMultiplier
-                                  const subPercentRaw = subLimit > 0 ? (subSpent / subLimit) * 100 : (subSpent > 0 ? 101 : 0)
-                                  const subColor = getColor(subPercentRaw)
+                             return (
+                               <SortableContext items={sortableItems} strategy={verticalListSortingStrategy}>
+                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                   {(() => {
+                                     const renderedElements = [];
+                                     
+                                     allSubs.forEach(sub => {
+                                       const subData = typeof subcategories[sub] === 'object'
+                                         ? subcategories[sub]
+                                         : { limit: subcategories[sub] || 0, dueDate: '' }
+                                       
+                                       const subDueDays = String(subData.dueDate || '')
+                                         .split(',')
+                                         .map(d => parseInt(d.trim()))
+                                         .filter(d => !isNaN(d) && d >= 1 && d <= 31);
+                                       
+                                       const sortedDays = [...subDueDays].sort((a, b) => a - b);
+                                       
+                                       const instances = sortedDays.length > 1
+                                         ? sortedDays.map(day => ({ subName: sub, day, isSplitInstance: true }))
+                                         : [{ subName: sub, day: sortedDays[0] || null, isSplitInstance: false }];
+                                       
+                                       instances.forEach((inst, instIdx) => {
+                                         const displaySubName = inst.isSplitInstance ? `${sub} (${inst.day}${getOrdinal(inst.day)})` : sub;
+                                         const subSpent = getSubInstanceSpent(categorySpent[cat]?.subs[sub], sortedDays, inst.day);
+                                         const subLimit = parseFloat(subData.limit) || 0;
+                                         const subPercentRaw = subLimit > 0 ? (subSpent / subLimit) * 100 : (subSpent > 0 ? 101 : 0)
+                                         const subColor = getColor(subPercentRaw)
+                                         
+                                         const sortableId = inst.isSplitInstance ? `${cat}::${sub}::${inst.day}` : `${cat}::${sub}`;
+                                         
+                                         renderedElements.push(
+                                           <SortableSubRow key={sortableId} id={sortableId} cat={cat}>
+                                             {({ dragHandleProps: subDragProps }) => (
+                                               <div>
+                                                 {editingSubcat?.cat === cat && editingSubcat?.oldName === sub ? (
+                                                   <form onSubmit={(e) => handleEditSubcatSave(e, cat)} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', background: 'var(--bg-base)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                                     <span style={{ fontWeight: '600', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Editing: {sub}</span>
+                                                     <input type="text" required value={editName} onChange={e => setEditName(e.target.value)}
+                                                       style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem', boxSizing: 'border-box' }}
+                                                       placeholder="Subcategory name" />
+                                                     <div style={{ display: 'flex', gap: '8px' }}>
+                                                       <input type="number" placeholder="Amount" min="0" step="0.01" value={editLimit} onChange={e => setEditLimit(e.target.value)}
+                                                         onBlur={() => handleEditSubcatSaveDirect(cat, editName, editLimit, editDue)}
+                                                         style={{ flex: 1, padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem' }} inputMode="decimal" />
+                                                       <CalendarDayPicker 
+                                                         value={editDue} 
+                                                         onChange={(val) => {
+                                                           setEditDue(val);
+                                                           handleEditSubcatSaveDirect(cat, editName, editLimit, val);
+                                                         }} 
+                                                       />
+                                                     </div>
+                                                     <div style={{ display: 'flex', gap: '8px' }}>
+                                                       <button type="button" className="btn btn-ghost" onClick={() => setEditingSubcat(null)} style={{ flex: 1 }}>Done</button>
+                                                     </div>
+                                                     <button type="button" className="btn btn-ghost" onClick={() => handleDeleteSubcat(cat, sub)}
+                                                       style={{ color: 'var(--danger)', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                       <Trash2 size={12} /> Delete Subcategory
+                                                     </button>
+                                                   </form>
+                                                 ) : (
+                                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                       {/* Sub drag handle */}
+                                                       <button
+                                                         {...subDragProps}
+                                                         onClick={e => e.stopPropagation()}
+                                                         style={{ cursor: 'grab', color: 'var(--text-secondary)', background: 'none', border: 'none', padding: '2px', display: 'flex', alignItems: 'center', opacity: 0.5, flexShrink: 0, touchAction: 'none' }}
+                                                         title="Drag to reorder"
+                                                       >
+                                                         <GripVertical size={14} />
+                                                       </button>
 
-                                  return (
-                                    <SortableSubRow key={sub} id={`${cat}::${sub}`} cat={cat}>
-                                      {({ dragHandleProps: subDragProps }) => (
-                                        <div>
-                                          {editingSubcat?.cat === cat && editingSubcat?.oldName === sub ? (
-                                            <form onSubmit={(e) => handleEditSubcatSave(e, cat)} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', background: 'var(--bg-base)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                                              <span style={{ fontWeight: '600', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Editing: {sub}</span>
-                                              <input type="text" required value={editName} onChange={e => setEditName(e.target.value)}
-                                                style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem', boxSizing: 'border-box' }}
-                                                placeholder="Subcategory name" />
-                                              <div style={{ display: 'flex', gap: '8px' }}>
-                                                <input type="number" placeholder="Amount" min="0" step="0.01" value={editLimit} onChange={e => setEditLimit(e.target.value)}
-                                                  onBlur={() => handleEditSubcatSaveDirect(cat, editName, editLimit, editDue)}
-                                                  style={{ flex: 1, padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem' }} inputMode="decimal" />
-                                                <input type="text" placeholder="Due day e.g. 1" value={editDue} onChange={e => setEditDue(e.target.value)}
-                                                  onBlur={() => handleEditSubcatSaveDirect(cat, editName, editLimit, editDue)}
-                                                  style={{ flex: 1, padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem' }} />
-                                              </div>
-                                              <div style={{ display: 'flex', gap: '8px' }}>
-                                                <button type="button" className="btn btn-ghost" onClick={() => setEditingSubcat(null)} style={{ flex: 1 }}>Done</button>
-                                              </div>
-                                              <button type="button" className="btn btn-ghost" onClick={() => handleDeleteSubcat(cat, sub)}
-                                                style={{ color: 'var(--danger)', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                <Trash2 size={12} /> Delete Subcategory
-                                              </button>
-                                            </form>
-                                          ) : (
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                {/* Sub drag handle */}
-                                                <button
-                                                  {...subDragProps}
-                                                  onClick={e => e.stopPropagation()}
-                                                  style={{ cursor: 'grab', color: 'var(--text-secondary)', background: 'none', border: 'none', padding: '2px', display: 'flex', alignItems: 'center', opacity: 0.5, flexShrink: 0, touchAction: 'none' }}
-                                                  title="Drag to reorder"
-                                                >
-                                                  <GripVertical size={14} />
-                                                </button>
+                                                       <span style={{ flex: 1, fontSize: '0.9rem', fontWeight: '500' }}>{displaySubName}</span>
 
-                                                <span style={{ flex: 1, fontSize: '0.9rem', fontWeight: '500' }}>{sub}</span>
+                                                       <span style={{ fontSize: '0.85rem', fontWeight: '500', flexShrink: 0 }}>
+                                                         <span style={{ color: subColor }}>${subSpent.toFixed(2)}</span>
+                                                         <span style={{ color: 'var(--text-secondary)', margin: '0 3px' }}>/</span>
+                                                         <span style={{ color: 'var(--text-primary)' }}>${subLimit.toFixed(2)}</span>
+                                                       </span>
 
-                                                <span style={{ fontSize: '0.85rem', fontWeight: '500', flexShrink: 0 }}>
-                                                  <span style={{ color: subColor }}>${subSpent.toFixed(2)}</span>
-                                                  <span style={{ color: 'var(--text-secondary)', margin: '0 3px' }}>/</span>
-                                                  <span style={{ color: 'var(--text-primary)' }}>${subLimit.toFixed(2)}</span>
-                                                </span>
+                                                       <button className="btn btn-ghost btn-icon" onClick={(e) => startEditSubcat(e, cat, sub, subData)}
+                                                         style={{ padding: '3px', color: 'var(--text-secondary)', flexShrink: 0 }} title="Edit">
+                                                         <Pencil size={12} />
+                                                       </button>
+                                                     </div>
 
-                                                <button className="btn btn-ghost btn-icon" onClick={(e) => startEditSubcat(e, cat, sub, subData)}
-                                                  style={{ padding: '3px', color: 'var(--text-secondary)', flexShrink: 0 }} title="Edit">
-                                                  <Pencil size={12} />
-                                                </button>
-                                              </div>
+                                                     {renderDueDate(inst.day)}
 
-                                              {renderDueDate(subData.dueDate)}
-
-                                              <div style={{ height: '5px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
-                                                <div style={{ height: '100%', width: `${Math.min(100, subPercentRaw)}%`, background: subColor, transition: 'width 0.3s ease' }} />
-                                              </div>
-                                            </div>
-                                          )}
-                                        </div>
-                                      )}
-                                    </SortableSubRow>
-                                  )
-                                })}
-                              </div>
-                            </SortableContext>
+                                                     <div style={{ height: '5px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
+                                                       <div style={{ height: '100%', width: `${Math.min(100, subPercentRaw)}%`, background: subColor, transition: 'width 0.3s ease' }} />
+                                                     </div>
+                                                   </div>
+                                                 )}
+                                               </div>
+                                             )}
+                                           </SortableSubRow>
+                                         );
+                                       });
+                                     });
+                                     return renderedElements;
+                                   })()}
+                                 </div>
+                               </SortableContext>
+                             );
+                           })()}
 
                           {/* Add Subcategory */}
                           {addingSubcatTo === cat ? (
@@ -721,8 +937,10 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                               <div style={{ display: 'flex', gap: '8px' }}>
                                 <input type="number" placeholder="Budget amount" min="0" step="0.01" value={newSubLimit} onChange={e => setNewSubLimit(e.target.value)}
                                   style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem' }} inputMode="decimal" />
-                                <input type="text" placeholder="Due day(s) e.g. 1, 15" value={newSubDue} onChange={e => setNewSubDue(e.target.value)}
-                                  style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem' }} />
+                                <CalendarDayPicker 
+                                  value={newSubDue} 
+                                  onChange={setNewSubDue} 
+                                />
                               </div>
                               <div style={{ display: 'flex', gap: '8px' }}>
                                 <button type="button" className="btn btn-ghost" onClick={() => { setAddingSubcatTo(null); setNewSubName(''); setNewSubLimit(''); setNewSubDue('') }} style={{ flex: 1 }}>Cancel</button>
@@ -760,12 +978,9 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                 onChange={e => setNewCatName(e.target.value)}
                 style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem', boxSizing: 'border-box' }}
               />
-              <input
-                type="text"
-                placeholder="Due day(s) e.g. 1, 15 (optional)"
-                value={newCatDue}
-                onChange={e => setNewCatDue(e.target.value)}
-                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem', boxSizing: 'border-box' }}
+              <CalendarDayPicker 
+                value={newCatDue} 
+                onChange={setNewCatDue} 
               />
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button type="button" className="btn btn-ghost" onClick={() => { setAddingNewCat(false); setNewCatName(''); setNewCatDue('') }} style={{ flex: 1 }}>Cancel</button>
