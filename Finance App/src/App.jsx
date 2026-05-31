@@ -10,6 +10,7 @@ import TransactionForm from './components/TransactionForm'
 import Auth from './components/Auth'
 import BudgetProgress from './components/BudgetProgress'
 import Insights from './components/Insights'
+import PaycheckTracker from './components/PaycheckTracker'
 import { requestNotificationPermission, checkUpcomingBills } from './utils/notifications'
 
 class ErrorBoundary extends Component {
@@ -348,134 +349,135 @@ function App() {
       </header>
 
       <main>
-        <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', marginBottom: '24px' }}>
-          <div 
-            className="glass-panel" 
-            style={{ 
-              display: 'flex', 
-              justifyContent: 'center', 
-              alignItems: 'center', 
-              padding: '12px 24px', 
-              cursor: 'pointer', 
-              gap: '10px',
-              userSelect: 'none',
-              transition: 'all 0.2s ease',
-              boxShadow: 'var(--shadow-sm)',
-            }}
-            onClick={() => {
-              setShowMonthPicker(!showMonthPicker);
-              const [y] = selectedMonth.split('-').map(Number);
-              setPickerYear(y);
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
-          >
-            <Calendar size={18} style={{ color: 'var(--primary)' }} />
-            <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {displayMonthName}
-              <ChevronDown size={16} style={{ 
-                transform: showMonthPicker ? 'rotate(180deg)' : 'rotate(0deg)', 
-                transition: 'transform 0.2s ease',
-                color: 'var(--text-secondary)'
-              }} />
-            </h2>
+        {/* ── Top Row: Paycheck Tracker (left) + Month Picker (far right) ── */}
+        <div className="paycheck-top-row">
+
+          {/* Paycheck Tracker – fills available space */}
+          <PaycheckTracker
+            budgets={budgets}
+            user={user}
+            householdId={householdId}
+            selectedMonth={selectedMonth}
+            customCategories={customCategories}
+          />
+
+          {/* Month / Year Picker – anchored to the far right */}
+          <div className="paycheck-month-picker">
+            <div
+              className="glass-panel"
+              style={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                padding: '12px 20px',
+                cursor: 'pointer',
+                gap: '10px',
+                userSelect: 'none',
+                transition: 'all 0.2s ease',
+                boxShadow: 'var(--shadow-sm)',
+                height: '100%',
+                minHeight: '56px',
+              }}
+              onClick={() => {
+                setShowMonthPicker(!showMonthPicker);
+                const [y] = selectedMonth.split('-').map(Number);
+                setPickerYear(y);
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
+            >
+              <Calendar size={17} style={{ color: 'var(--primary)', flexShrink: 0 }} />
+              <span style={{ margin: 0, fontSize: '1rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', fontFamily: 'var(--font-heading)', whiteSpace: 'nowrap' }}>
+                {displayMonthName}
+                <ChevronDown size={15} style={{
+                  transform: showMonthPicker ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.2s ease',
+                  color: 'var(--text-secondary)'
+                }} />
+              </span>
+            </div>
+
+            {showMonthPicker && (
+              <>
+                {/* Overlay backdrop to close picker when clicking outside */}
+                <div
+                  style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 998 }}
+                  onClick={() => setShowMonthPicker(false)}
+                />
+
+                {/* Dropdown Month Picker */}
+                <div
+                  className="glass-panel"
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: '8px',
+                    padding: '16px',
+                    zIndex: 999,
+                    width: '290px',
+                    boxShadow: 'var(--shadow-md)',
+                    border: 'var(--border) 1px solid',
+                    animation: 'fadeIn 0.2s ease-out',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '12px'
+                  }}
+                >
+                  {/* Year Selection Row */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>
+                    <button
+                      className="btn btn-ghost btn-icon"
+                      style={{ minWidth: '36px', minHeight: '36px', padding: '6px' }}
+                      onClick={(e) => { e.stopPropagation(); setPickerYear(y => y - 1); }}
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <span style={{ fontWeight: '700', fontSize: '1.15rem', color: 'var(--text-primary)', fontFamily: 'var(--font-heading)' }}>
+                      {pickerYear}
+                    </span>
+                    <button
+                      className="btn btn-ghost btn-icon"
+                      style={{ minWidth: '36px', minHeight: '36px', padding: '6px' }}
+                      onClick={(e) => { e.stopPropagation(); setPickerYear(y => y + 1); }}
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+
+                  {/* 3x4 Month Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                    {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((monName, idx) => {
+                      const monthValStr = String(idx + 1).padStart(2, '0');
+                      const targetMonthStr = `${pickerYear}-${monthValStr}`;
+                      const isSelected = selectedMonth === targetMonthStr;
+                      return (
+                        <button
+                          key={monName}
+                          className={`btn ${isSelected ? 'btn-primary' : 'btn-ghost'}`}
+                          style={{
+                            padding: '8px 4px',
+                            fontSize: '0.9rem',
+                            borderRadius: '8px',
+                            fontWeight: isSelected ? '600' : '400',
+                            border: isSelected ? 'none' : '1px solid var(--border)',
+                            minHeight: '36px'
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedMonth(targetMonthStr);
+                            setShowMonthPicker(false);
+                          }}
+                        >
+                          {monName}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
-
-          {showMonthPicker && (
-            <>
-              {/* Overlay backdrop to close picker when clicking outside */}
-              <div 
-                style={{ 
-                  position: 'fixed', 
-                  top: 0, 
-                  left: 0, 
-                  right: 0, 
-                  bottom: 0, 
-                  zIndex: 998 
-                }} 
-                onClick={() => setShowMonthPicker(false)}
-              />
-              
-              {/* Dropdown Month Picker */}
-              <div 
-                className="glass-panel" 
-                style={{ 
-                  position: 'absolute', 
-                  top: '100%', 
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  marginTop: '8px', 
-                  padding: '16px', 
-                  zIndex: 999, 
-                  width: '290px',
-                  boxShadow: 'var(--shadow-md)',
-                  border: 'var(--border) 1px solid',
-                  animation: 'fadeIn 0.2s ease-out',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '12px'
-                }}
-              >
-                {/* Year Selection Row */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '8px', borderBottom: '1px solid var(--border)' }}>
-                  <button 
-                    className="btn btn-ghost btn-icon" 
-                    style={{ minWidth: '36px', minHeight: '36px', padding: '6px' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPickerYear(y => y - 1);
-                    }}
-                  >
-                    <ChevronLeft size={16} />
-                  </button>
-                  <span style={{ fontWeight: '700', fontSize: '1.15rem', color: 'var(--text-primary)', fontFamily: 'var(--font-heading)' }}>
-                    {pickerYear}
-                  </span>
-                  <button 
-                    className="btn btn-ghost btn-icon" 
-                    style={{ minWidth: '36px', minHeight: '36px', padding: '6px' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPickerYear(y => y + 1);
-                    }}
-                  >
-                    <ChevronRight size={16} />
-                  </button>
-                </div>
-
-                {/* 3x4 Month Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-                  {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((monName, idx) => {
-                    const monthValStr = String(idx + 1).padStart(2, '0');
-                    const targetMonthStr = `${pickerYear}-${monthValStr}`;
-                    const isSelected = selectedMonth === targetMonthStr;
-                    
-                    return (
-                      <button
-                        key={monName}
-                        className={`btn ${isSelected ? 'btn-primary' : 'btn-ghost'}`}
-                        style={{ 
-                          padding: '8px 4px', 
-                          fontSize: '0.9rem', 
-                          borderRadius: '8px',
-                          fontWeight: isSelected ? '600' : '400',
-                          border: isSelected ? 'none' : '1px solid var(--border)',
-                          minHeight: '36px'
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedMonth(targetMonthStr);
-                          setShowMonthPicker(false);
-                        }}
-                      >
-                        {monName}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          )}
         </div>
 
         {/* Tab Navigation */}

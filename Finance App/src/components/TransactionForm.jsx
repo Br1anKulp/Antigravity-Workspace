@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { Plus, Trash2, Calendar } from 'lucide-react'
+import { Plus, Trash2, Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
 
 // ─── Custom Transaction Date Picker (Monthly Calendar Grid) ─────────────────────
 function TransactionDatePicker({ value, onChange, selectedMonth, singleSelect }) {
@@ -9,31 +9,44 @@ function TransactionDatePicker({ value, onChange, selectedMonth, singleSelect })
     return Array.isArray(value) ? value : [];
   }, [value]);
 
-  const [yearStr, monthStr] = (selectedMonth || new Date().toISOString().slice(0, 7)).split('-');
-  const year = parseInt(yearStr);
-  const month = parseInt(monthStr);
+  // Use internal state for navigated month/year in the calendar picker
+  const [viewYear, setViewYear] = useState(() => {
+    const [y] = (selectedMonth || new Date().toISOString().slice(0, 7)).split('-');
+    return parseInt(y);
+  });
+  const [viewMonth, setViewMonth] = useState(() => {
+    const [, m] = (selectedMonth || new Date().toISOString().slice(0, 7)).split('-');
+    return parseInt(m);
+  });
+
+  // Sync viewed month when the parent's selectedMonth changes
+  useEffect(() => {
+    if (selectedMonth) {
+      const [y, m] = selectedMonth.split('-');
+      setViewYear(parseInt(y));
+      setViewMonth(parseInt(m));
+    }
+  }, [selectedMonth]);
 
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June', 
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
-  const totalDays = new Date(year, month, 0).getDate();
-  const startDayOfWeek = new Date(year, month - 1, 1).getDay();
+  const totalDays = new Date(viewYear, viewMonth, 0).getDate();
+  const startDayOfWeek = new Date(viewYear, viewMonth - 1, 1).getDay();
 
   const toggleDate = (day) => {
-    const paddedMonth = String(month).padStart(2, '0');
+    const paddedMonth = String(viewMonth).padStart(2, '0');
     const paddedDay = String(day).padStart(2, '0');
-    const dateStr = `${year}-${paddedMonth}-${paddedDay}`;
+    const dateStr = `${viewYear}-${paddedMonth}-${paddedDay}`;
 
     if (singleSelect) {
       onChange([dateStr]);
       setIsOpen(false);
     } else {
       if (parsedDates.includes(dateStr)) {
-        if (parsedDates.length > 1) {
-          onChange(parsedDates.filter(d => d !== dateStr));
-        }
+        onChange(parsedDates.filter(d => d !== dateStr));
       } else {
         onChange([...parsedDates, dateStr].sort());
       }
@@ -47,14 +60,32 @@ function TransactionDatePicker({ value, onChange, selectedMonth, singleSelect })
     setIsOpen(false);
   };
 
+  const handlePrevMonth = () => {
+    if (viewMonth === 1) {
+      setViewMonth(12);
+      setViewYear(prev => prev - 1);
+    } else {
+      setViewMonth(prev => prev - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (viewMonth === 12) {
+      setViewMonth(1);
+      setViewYear(prev => prev + 1);
+    } else {
+      setViewMonth(prev => prev + 1);
+    }
+  };
+
   const daysGrid = [];
   for (let i = 0; i < startDayOfWeek; i++) {
     daysGrid.push({ day: '', fullDate: null, isCurrentMonth: false });
   }
   for (let d = 1; d <= totalDays; d++) {
-    const paddedMonth = String(month).padStart(2, '0');
+    const paddedMonth = String(viewMonth).padStart(2, '0');
     const paddedDay = String(d).padStart(2, '0');
-    const fullDate = `${year}-${paddedMonth}-${paddedDay}`;
+    const fullDate = `${viewYear}-${paddedMonth}-${paddedDay}`;
     daysGrid.push({ day: d, fullDate, isCurrentMonth: true });
   }
 
@@ -118,9 +149,43 @@ function TransactionDatePicker({ value, onChange, selectedMonth, singleSelect })
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '6px', borderBottom: '1px solid var(--border)' }}>
-              <span style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-                {monthNames[month - 1]} {year}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={handlePrevMonth}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    padding: '2px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--text-primary)', minWidth: '100px', textAlign: 'center' }}>
+                  {monthNames[viewMonth - 1]} {viewYear}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleNextMonth}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    padding: '2px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
               <button 
                 type="button" 
                 onClick={selectToday}

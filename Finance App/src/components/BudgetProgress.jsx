@@ -733,7 +733,12 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
 
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontWeight: '600', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                                    <span style={{ flexShrink: 0 }}>{cat}</span>
+                                    <span style={{ 
+                                      overflow: 'hidden', 
+                                      textOverflow: 'ellipsis', 
+                                      whiteSpace: 'nowrap',
+                                      minWidth: 0,
+                                    }}>{cat}</span>
                                     <button
                                       className="btn btn-ghost btn-icon"
                                       onClick={(e) => startEditCat(e, cat, catData)}
@@ -871,7 +876,15 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                                                          <GripVertical size={14} />
                                                        </button>
 
-                                                       <span style={{ flex: 1, fontSize: '0.9rem', fontWeight: '500' }}>{displaySubName}</span>
+                                                       <span style={{ 
+                                                          flex: 1, 
+                                                          fontSize: '0.9rem', 
+                                                          fontWeight: '500',
+                                                          overflow: 'hidden',
+                                                          textOverflow: 'ellipsis',
+                                                          whiteSpace: 'nowrap',
+                                                          minWidth: 0,
+                                                        }}>{displaySubName}</span>
 
                                                        <span style={{ fontSize: '0.85rem', fontWeight: '500', flexShrink: 0 }}>
                                                          <span style={{ color: subColor }}>${subSpent.toFixed(2)}</span>

@@ -191,3 +191,108 @@ a:hover {
   align-items: center;
   gap: 12px;
 }
+
+/* ── Paycheck Tracker Layout ───────────────────────────────────────────── */
+.paycheck-top-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.paycheck-month-picker {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* paycheck-section: transparent flex wrapper on desktop */
+.paycheck-section {
+  display: contents; /* acts invisible on desktop — children behave as direct flex children */
+}
+
+.paycheck-cards-row {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Mobile-only collapse toggle — hidden on desktop */
+.paycheck-collapse-toggle {
+  display: none;
+}
+
+/* Bill list: scrollable on desktop, full-height on mobile */
+.paycheck-bills-list {
+  max-height: 130px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+@media (max-width: 640px) {
+  /* On mobile, paycheck-section becomes a real column container */
+  .paycheck-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Show the collapse toggle on mobile */
+  .paycheck-collapse-toggle {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Stack paycheck cards vertically */
+  .paycheck-cards-row {
+    flex-direction: column;
+  }
+
+  /* Hide cards when collapsed — mobile only */
+  .paycheck-cards-hidden {
+    display: none;
+  }
+
+  /* Column layout: month picker floats to top-right */
+  .paycheck-top-row {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .paycheck-month-picker {
+    align-self: flex-end;
+    order: -1;
+  }
+
+  /* Bill list: show all bills without scroll on mobile */
+  .paycheck-bills-list {
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  /* Bigger touch targets for action buttons — mobile only */
+  .paycheck-touch-btn {
+    min-width: 40px !important;
+    min-height: 40px !important;
+    padding: 10px !important;
+  }
+
+  /* Wider amount input on mobile */
+  .paycheck-amount-input {
+    width: 110px !important;
+    font-size: 1rem !important;
+    padding: 6px 10px !important;
+  }
+}
