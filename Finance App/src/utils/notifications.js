@@ -15,7 +15,7 @@ export async function requestNotificationPermission() {
  * Check all subcategory due dates against today.
  * Fire a notification for any unpaid bill due within `daysAhead` days.
  */
-export function checkUpcomingBills(budgets, transactions, selectedMonth, daysAhead = 3) {
+export function checkUpcomingBills(budgets, transactions, selectedMonth) {
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   if (!budgets || !transactions) return;
 
@@ -36,9 +36,14 @@ export function checkUpcomingBills(budgets, transactions, selectedMonth, daysAhe
 
       dueDays.forEach(day => {
         const dueDate = new Date(year, month - 1, day);
-        const diffDays = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
+        
+        // Only trigger if today is the exact due date (year, month, and day match)
+        const isDueToday = 
+          today.getFullYear() === dueDate.getFullYear() &&
+          today.getMonth() === dueDate.getMonth() &&
+          today.getDate() === dueDate.getDate();
 
-        if (diffDays >= 0 && diffDays <= daysAhead) {
+        if (isDueToday) {
           // Check if there's already a paid transaction for this subcategory this month
           const alreadyPaid = transactions.some(
             t =>
@@ -48,7 +53,7 @@ export function checkUpcomingBills(budgets, transactions, selectedMonth, daysAhe
           );
 
           if (!alreadyPaid) {
-            const label = diffDays === 0 ? 'due TODAY' : `due in ${diffDays} day${diffDays > 1 ? 's' : ''}`;
+            const label = 'due TODAY';
             try {
               new Notification(`💳 Bill Reminder: ${subName}`, {
                 body: `${subName} (${catName}) is ${label}. Don't forget to pay!`,
