@@ -244,7 +244,8 @@ function App() {
         date: newTx.date || new Date().toISOString(),
         status: newTx.status || 'paid',
         paymentMethod: newTx.paymentMethod || 'Checking Account',
-        notes: newTx.notes || ''
+        notes: newTx.notes || '',
+        splits: newTx.splits || null
       })
     } catch (err) {
       console.error("Error adding document: ", err)
@@ -264,7 +265,9 @@ function App() {
         subcategory: updatedTx.subcategory,
         date: updatedTx.date || new Date().toISOString(),
         status: updatedTx.status || 'paid',
-        paymentMethod: updatedTx.paymentMethod || 'Checking Account'
+        paymentMethod: updatedTx.paymentMethod || 'Checking Account',
+        notes: updatedTx.notes || '',
+        splits: updatedTx.splits || null
       });
     } catch (err) {
       console.error("Error updating document: ", err)
