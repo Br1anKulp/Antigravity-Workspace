@@ -365,9 +365,9 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
     const txDataTemplate = {
       ...formData,
       amount: parseFloat(formData.amount),
-      category: formData.type === 'income' ? 'Income' : formData.category,
+      category: formData.type === 'income' ? 'Income' : (isSplit ? (splits[0]?.category || 'Split') : formData.category),
       subcategory: formData.type === 'income' ? '' : (isSplit ? 'Split' : formData.subcategory),
-      splits: isSplit ? splits.map(s => ({ category: s.category || formData.category, subcategory: s.subcategory, amount: parseFloat(s.amount) || 0, notes: (s.notes || '').trim() })) : null,
+      splits: isSplit ? splits.map(s => ({ category: s.category, subcategory: s.subcategory, amount: parseFloat(s.amount) || 0, notes: (s.notes || '').trim() })) : null,
       notes: formData.notes.trim()
     };
     delete txDataTemplate.dates; // Remove the array from the payload
@@ -475,82 +475,83 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
           </div>
           
           {formData.type === 'expense' && (
-            <>
-              <div>
-                <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Main Category</label>
-                <select 
-                  value={formData.category}
-                  required
-                  autoComplete="off"
-                  onChange={e => setFormData({ ...formData, category: e.target.value })}
-                  style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem' }}
-                >
-                  <option value="">Select Category</option>
-                  {customCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-                {customCategories.length === 0 && (
-                  <span style={{ display: 'block', marginTop: '6px', fontSize: '0.8rem', color: 'var(--warning)', fontWeight: '500' }}>
-                    ⚠️ No categories configured yet. Please set up a budget first.
-                  </span>
-                )}
-              </div>
-              
-              {!isSplit ? (
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                    <label style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Subcategory</label>
-                    <button 
-                      type="button" 
-                      onClick={() => {
-                        setIsSplit(true);
-                        if (splits.length === 1 && !splits[0].subcategory) {
-                          setSplits([{ subcategory: formData.subcategory, amount: formData.amount }]);
-                        }
-                      }}
-                      style={{ fontSize: '0.8rem', background: 'transparent', border: 'none', color: 'var(--primary)', cursor: 'pointer', padding: 0 }}
-                    >
-                      Split transaction?
-                    </button>
-                  </div>
-                  <select 
-                    value={formData.subcategory}
-                    required
-                    autoComplete="off"
+            <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={isSplit}
                     onChange={e => {
-                      if (e.target.value === '__custom__') {
-                        const custom = prompt('Enter custom subcategory:');
-                        if (custom) {
-                          setFormData({ ...formData, subcategory: custom });
-                        } else {
-                          setFormData({ ...formData, subcategory: '' });
-                        }
+                      setIsSplit(e.target.checked);
+                      if (e.target.checked) {
+                        setSplits([
+                          { category: formData.category, subcategory: formData.subcategory, amount: formData.amount, notes: '' },
+                          { category: '', subcategory: '', amount: '', notes: '' }
+                        ]);
                       } else {
-                        setFormData({ ...formData, subcategory: e.target.value });
+                        setSplits([{ category: '', subcategory: '', amount: '', notes: '' }]);
                       }
                     }}
-                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem', appearance: 'auto' }}
-                  >
-                    <option value="">Select Subcategory</option>
-                    {(categoriesConfig[formData.category] || []).map(sub => (
-                      <option key={sub} value={sub}>{sub}</option>
-                    ))}
-                    {formData.subcategory && !(categoriesConfig[formData.category] || []).includes(formData.subcategory) && formData.subcategory !== '__custom__' && (
-                      <option value={formData.subcategory}>{formData.subcategory}</option>
+                  />
+                  Split this transaction?
+                </label>
+              </div>
+
+              {!isSplit ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Main Category</label>
+                    <select 
+                      value={formData.category}
+                      required={!isSplit}
+                      autoComplete="off"
+                      onChange={e => setFormData({ ...formData, category: e.target.value })}
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem' }}
+                    >
+                      <option value="">Select Category</option>
+                      {customCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    {customCategories.length === 0 && (
+                      <span style={{ display: 'block', marginTop: '6px', fontSize: '0.8rem', color: 'var(--warning)', fontWeight: '500' }}>
+                        ⚠️ No categories configured yet. Please set up a budget first.
+                      </span>
                     )}
-                    <option value="__custom__">+ Add Custom...</option>
-                  </select>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Subcategory</label>
+                    <select 
+                      value={formData.subcategory}
+                      required={!isSplit}
+                      autoComplete="off"
+                      onChange={e => {
+                        if (e.target.value === '__custom__') {
+                          const custom = prompt('Enter custom subcategory:');
+                          if (custom) {
+                            setFormData({ ...formData, subcategory: custom });
+                          } else {
+                            setFormData({ ...formData, subcategory: '' });
+                          }
+                        } else {
+                          setFormData({ ...formData, subcategory: e.target.value });
+                        }
+                      }}
+                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem', appearance: 'auto' }}
+                    >
+                      <option value="">Select Subcategory</option>
+                      {(categoriesConfig[formData.category] || []).map(sub => (
+                        <option key={sub} value={sub}>{sub}</option>
+                      ))}
+                      {formData.subcategory && !(categoriesConfig[formData.category] || []).includes(formData.subcategory) && formData.subcategory !== '__custom__' && (
+                        <option value={formData.subcategory}>{formData.subcategory}</option>
+                      )}
+                      <option value="__custom__">+ Add Custom...</option>
+                    </select>
+                  </div>
                 </div>
               ) : (
-                <div style={{ gridColumn: 'span 2', background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)' }}>
+                <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
                     <label style={{ fontWeight: '600', fontSize: '0.95rem', color: 'var(--text-primary)' }}>Transaction Splits</label>
-                    <button 
-                      type="button" 
-                      onClick={() => setIsSplit(false)}
-                      style={{ fontSize: '0.8rem', background: 'transparent', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: 0 }}
-                    >
-                      Cancel Split
-                    </button>
                   </div>
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '12px' }}>
@@ -560,7 +561,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                           <div>
                             <select
                               value={s.category || ''}
-                              required
+                              required={isSplit}
                               onChange={e => {
                                 handleSplitChange(idx, 'category', e.target.value);
                                 handleSplitChange(idx, 'subcategory', ''); // Reset subcategory when category changes
@@ -574,7 +575,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                           <div style={{ position: 'relative' }}>
                             <select 
                               value={s.subcategory}
-                              required
+                              required={isSplit}
                               autoComplete="off"
                               onChange={e => {
                                 if (e.target.value === '__custom__') {
@@ -606,6 +607,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                             type="number"
                             step="0.01"
                             min="0"
+                            required={isSplit}
                             value={s.amount}
                             onChange={e => handleSplitChange(idx, 'amount', e.target.value)}
                             style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)' }}
@@ -674,7 +676,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                   </div>
                 </div>
               )}
-            </>
+            </div>
           )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px', gridColumn: 'span 2' }}>
