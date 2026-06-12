@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { Plus, Trash2, Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
+import { doc, deleteDoc } from 'firebase/firestore'
+import { db } from '../firebase'
 
 // ─── Custom Transaction Date Picker (Monthly Calendar Grid) ─────────────────────
 function TransactionDatePicker({ value, onChange, selectedMonth, singleSelect }) {
@@ -292,6 +294,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
   // Split transaction states
   const [isSplit, setIsSplit] = useState(false)
   const [splits, setSplits] = useState([{ category: '', subcategory: '', amount: '', notes: '' }])
+  const [bankTxId, setBankTxId] = useState(null)
 
   // Clear subcategory when category changes so user must select one
   useEffect(() => {
@@ -301,7 +304,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
     }))
   }, [formData.category])
 
-  // Listen for edit requests from the transaction list
+  // Listen for edit and prefill requests
   useEffect(() => {
     const handleEdit = (e) => {
       const tx = e.detail;
@@ -327,12 +330,39 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
       }
       
       setEditingId(tx.id);
+      setBankTxId(null); // Clear bank link ID
+      setIsOpen(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handlePrefill = (e) => {
+      const tx = e.detail;
+      setFormData({
+        title: tx.title,
+        amount: tx.amount,
+        category: '', // Force selection
+        subcategory: '', // Force selection
+        type: 'expense',
+        isRecurring: false,
+        status: 'paid',
+        paymentMethod: tx.paymentMethod || 'Checking Account',
+        notes: tx.notes || '',
+        dates: [tx.date]
+      });
+      setIsSplit(false);
+      setSplits([{ category: '', subcategory: '', amount: '', notes: '' }]);
+      setEditingId(null);
+      setBankTxId(tx.bankTxId || null); // Save the bank transaction id to delete it later
       setIsOpen(true);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     document.addEventListener('edit-transaction', handleEdit);
-    return () => document.removeEventListener('edit-transaction', handleEdit);
+    document.addEventListener('prefill-transaction', handlePrefill);
+    return () => {
+      document.removeEventListener('edit-transaction', handleEdit);
+      document.removeEventListener('prefill-transaction', handlePrefill);
+    };
   }, []);
 
   const resetForm = () => {
@@ -351,6 +381,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
     setIsSplit(false);
     setSplits([{ category: '', subcategory: '', amount: '', notes: '' }]);
     setEditingId(null);
+    setBankTxId(null);
     setIsOpen(false);
   }
 
@@ -380,6 +411,13 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
       formData.dates.forEach(d => {
         onAdd({ ...txDataTemplate, date: new Date(d + 'T12:00:00').toISOString(), id: crypto.randomUUID() });
       });
+
+      // If imported from bank feed, delete it from pending list
+      if (bankTxId) {
+        deleteDoc(doc(db, 'bank_transactions', bankTxId)).catch(err => {
+          console.error("Error deleting synced bank transaction after review:", err);
+        });
+      }
     }
 
     resetForm();

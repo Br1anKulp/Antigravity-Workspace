@@ -13,6 +13,7 @@ import Insights from './components/Insights'
 import PaycheckTracker from './components/PaycheckTracker'
 import { requestNotificationPermission, checkUpcomingBills } from './utils/notifications'
 import PlaidConnector from './components/PlaidConnector'
+import BankActivityFeed from './components/BankActivityFeed'
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -62,6 +63,7 @@ function App() {
   const [budgets, setBudgets] = useState({})
   const [loadingBudgets, setLoadingBudgets] = useState(true)
   const [activeTab, setActiveTab] = useState('dashboard')
+  const [isBankFeedOpen, setIsBankFeedOpen] = useState(false)
   
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const saved = localStorage.getItem('selected-month');
@@ -332,7 +334,11 @@ function App() {
           <span style={{ fontWeight: '700', fontSize: '1.25rem', letterSpacing: '0.5px' }}>Good Steward</span>
         </div>
         <div className="header-actions">
-          <PlaidConnector user={user} householdId={householdId} />
+          <PlaidConnector 
+            user={user} 
+            householdId={householdId} 
+            onOpenBankFeed={() => setIsBankFeedOpen(true)} 
+          />
           <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginRight: '8px', display: 'none' }}>
             {user.email}
           </span>
@@ -550,6 +556,13 @@ function App() {
         </>)}
         </ErrorBoundary>
       </main>
+
+      <BankActivityFeed 
+        user={user} 
+        householdId={householdId} 
+        isOpen={isBankFeedOpen} 
+        onClose={() => setIsBankFeedOpen(false)} 
+      />
     </div>
   )
 }

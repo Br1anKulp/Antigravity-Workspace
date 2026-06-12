@@ -25,3 +25,9 @@ dist-ssr
 
 # Firebase cache
 .firebase/
+
+# Environment files
+.env
+.env.*
+functions/.env
+

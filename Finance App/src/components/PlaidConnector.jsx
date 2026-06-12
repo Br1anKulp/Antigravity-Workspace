@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react'
 import { usePlaidLink } from 'react-plaid-link'
 import { Link, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react'
-import { collection, query, onSnapshot } from 'firebase/firestore'
+import { collection, query, onSnapshot, where } from 'firebase/firestore'
 import { db } from '../firebase'
 
-export default function PlaidConnector({ user, householdId }) {
+export default function PlaidConnector({ user, householdId, onOpenBankFeed }) {
   const [linkToken, setLinkToken] = useState(null)
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [linkedAccounts, setLinkedAccounts] = useState([])
+  const [pendingCount, setPendingCount] = useState(0)
   const [error, setError] = useState(null)
 
-  // Use the Firebase Functions regional endpoints for us-central1
-  const functionsBaseUrl = 'https://us-central1-finance-app-a08c0.cloudfunctions.net'
+  // Use the Firebase Functions regional endpoints for us-central1 (direct Cloud Run URLs for Gen 2)
+  const createlinktokenUrl = 'https://createlinktoken-lhx44eti5q-uc.a.run.app'
+  const exchangepublictokenUrl = 'https://exchangepublictoken-lhx44eti5q-uc.a.run.app'
+  const synctransactionsUrl = 'https://synctransactions-lhx44eti5q-uc.a.run.app'
 
   // Listen to the user's linked Plaid items from Firestore
   useEffect(() => {
@@ -28,12 +31,25 @@ export default function PlaidConnector({ user, householdId }) {
     return () => unsubscribe()
   }, [user])
 
+  // Listen for the count of pending bank transactions
+  useEffect(() => {
+    if (!user || !householdId) return
+    const q = query(
+      collection(db, 'bank_transactions'),
+      where('householdId', '==', householdId)
+    )
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setPendingCount(snapshot.size)
+    })
+    return () => unsubscribe()
+  }, [user, householdId])
+
   // 1. Fetch Plaid Link Token from Cloud Function
   const fetchLinkToken = async () => {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`${functionsBaseUrl}/createlinktoken`, {
+      const res = await fetch(createlinktokenUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.email })
@@ -55,7 +71,7 @@ export default function PlaidConnector({ user, householdId }) {
     onSuccess: async (publicToken, metadata) => {
       setLoading(true)
       try {
-        const res = await fetch(`${functionsBaseUrl}/exchangepublictoken`, {
+        const res = await fetch(exchangepublictokenUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -94,7 +110,7 @@ export default function PlaidConnector({ user, householdId }) {
     setSyncing(true)
     setError(null)
     try {
-      const res = await fetch(`${functionsBaseUrl}/synctransactions`, {
+      const res = await fetch(synctransactionsUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -134,6 +150,36 @@ export default function PlaidConnector({ user, householdId }) {
           >
             <RefreshCw size={16} className={syncing ? 'spin-animation' : ''} />
             <span style={{ fontWeight: '600' }}>Sync Bank</span>
+          </button>
+          
+          <button
+            className="btn btn-ghost"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontSize: '0.85rem',
+              padding: '6px 12px',
+              borderRadius: '8px',
+              position: 'relative'
+            }}
+            onClick={onOpenBankFeed}
+          >
+            <span>Bank Feed</span>
+            {pendingCount > 0 && (
+              <span style={{
+                background: 'var(--danger)',
+                color: '#fff',
+                fontSize: '0.7rem',
+                fontWeight: '700',
+                borderRadius: '10px',
+                padding: '2px 6px',
+                display: 'inline-block',
+                lineHeight: '1'
+              }}>
+                {pendingCount}
+              </span>
+            )}
           </button>
         </>
       ) : (
