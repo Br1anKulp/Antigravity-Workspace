@@ -12,6 +12,7 @@ import BudgetProgress from './components/BudgetProgress'
 import Insights from './components/Insights'
 import PaycheckTracker from './components/PaycheckTracker'
 import { requestNotificationPermission, checkUpcomingBills } from './utils/notifications'
+import PlaidConnector from './components/PlaidConnector'
 
 class ErrorBoundary extends Component {
   constructor(props) {
@@ -331,6 +332,7 @@ function App() {
           <span style={{ fontWeight: '700', fontSize: '1.25rem', letterSpacing: '0.5px' }}>Good Steward</span>
         </div>
         <div className="header-actions">
+          <PlaidConnector user={user} householdId={householdId} />
           <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginRight: '8px', display: 'none' }}>
             {user.email}
           </span>
