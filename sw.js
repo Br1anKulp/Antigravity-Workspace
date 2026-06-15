@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sketchbloom-v1';
+const CACHE_NAME = 'sketchbloom-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -31,32 +31,30 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
-// Fetch Event (Cache First / Fallback Network)
+// Fetch Event (Network First, Falling back to Cache)
 self.addEventListener('fetch', (e) => {
-  // Only handle HTTP/HTTPS protocols (avoid chrome-extension issues)
   if (!e.request.url.startsWith(self.location.origin)) return;
 
   e.respondWith(
-    caches.match(e.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-
-      return fetch(e.request).then((networkResponse) => {
-        if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
-          return networkResponse;
+    fetch(e.request)
+      .then((networkResponse) => {
+        // Cache new assets on the fly
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(e.request, responseToCache);
+          });
         }
-
-        const responseToCache = networkResponse.clone();
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(e.request, responseToCache);
-        });
-
         return networkResponse;
-      }).catch(() => {
-        // Fallback for offline if not in cache
-        return caches.match('/');
-      });
-    })
+      })
+      .catch(() => {
+        // If offline, check cache
+        return caches.match(e.request).then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          return caches.match('/');
+        });
+      })
   );
 });
