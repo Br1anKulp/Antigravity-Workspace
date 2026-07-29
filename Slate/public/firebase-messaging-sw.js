@@ -4,14 +4,16 @@
 importScripts('https://www.gstatic.com/firebasejs/10.14.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.14.0/firebase-messaging-compat.js');
 
-// Initialize Firebase App in service worker
+// Extract config params from script URL query parameters if present, or fallback to location params
+const urlParams = new URLSearchParams(self.location.search);
+
 firebase.initializeApp({
-  apiKey: "AIzaSyCXpEN4yDhXTO5_t7XSHO6YxB5Rs5IaAbI",
-  authDomain: "kulpslate.firebaseapp.com",
-  projectId: "kulpslate",
-  storageBucket: "kulpslate.firebasestorage.app",
-  messagingSenderId: "112333951852",
-  appId: "1:112333951852:web:f10c2642d2bdeebe80d949"
+  apiKey: urlParams.get('apiKey') || self.VITE_FIREBASE_API_KEY || "",
+  authDomain: urlParams.get('authDomain') || "kulpslate.firebaseapp.com",
+  projectId: urlParams.get('projectId') || "kulpslate",
+  storageBucket: urlParams.get('storageBucket') || "kulpslate.firebasestorage.app",
+  messagingSenderId: urlParams.get('messagingSenderId') || "112333951852",
+  appId: urlParams.get('appId') || "1:112333951852:web:f10c2642d2bdeebe80d949"
 });
 
 const messaging = firebase.messaging();
