@@ -1,0 +1,26 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function checking allowedUsers document dynamically with initial email fallback
+    function isWhitelisted() {
+      return request.auth != null && (
+        exists(/databases/$(database)/documents/allowedUsers/$(request.auth.token.email.lower())) ||
+        request.auth.token.email.lower() == 'brian.k.kulp@gmail.com' || 
+        request.auth.token.email.lower() == 'familynflowers@protonmail.com'
+      );
+    }
+
+    // Rules for allowedUsers collection
+    match /allowedUsers/{email} {
+      // Any authenticated user can check their own entry
+      allow read: if request.auth != null && request.auth.token.email.lower() == email.lower();
+      allow write: if isWhitelisted();
+    }
+
+    // Rules for all other collections: require the user to be whitelisted
+    match /{document=**} {
+      allow read, write: if isWhitelisted();
+    }
+  }
+}

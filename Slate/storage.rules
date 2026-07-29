@@ -1,0 +1,20 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Helper function checking authorization with Firestore allowedUsers or initial email fallback
+    function isWhitelisted() {
+      return request.auth != null && (
+        firestore.exists(/databases/(default)/documents/allowedUsers/$(request.auth.token.email.lower())) ||
+        request.auth.token.email.lower() == 'brian.k.kulp@gmail.com' || 
+        request.auth.token.email.lower() == 'familynflowers@protonmail.com'
+      );
+    }
+
+    match /{allPaths=**} {
+      allow read: if isWhitelisted();
+      // Enforce 50MB maximum file payload limit (50 * 1024 * 1024 bytes)
+      allow write: if isWhitelisted() && request.resource.size < 50 * 1024 * 1024;
+    }
+  }
+}
