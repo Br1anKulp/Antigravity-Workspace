@@ -20,6 +20,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { isMockMode } from '../firebase/config';
+import { dbService } from '../firebase/db';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 
 interface StoredCalendar {
@@ -944,22 +945,70 @@ export const SettingsView: React.FC = () => {
                   {importStatus.type === 'loading' ? 'Connecting...' : 'Connect Google Calendar'}
                 </button>
                 {events.some(e => !!e.googleEventId) && (
-                  <div className="flex gap-2 w-full">
+                  <div className="flex flex-col gap-2 w-full">
+                    <div className="flex gap-2 w-full">
+                      <button
+                        type="button"
+                        onClick={handleClearGoogleEvents}
+                        disabled={importStatus.type === 'loading'}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border border-rose-200 hover:border-rose-300 dark:border-rose-900/30 dark:hover:border-rose-900/60 text-rose-500 rounded-xl text-[11px] font-bold transition-all shadow-sm bg-transparent cursor-pointer"
+                      >
+                        Clear All Google/iCal
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeduplicateEvents}
+                        disabled={importStatus.type === 'loading'}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border border-slate-250 hover:border-slate-350 dark:border-brand-800 dark:hover:border-brand-700 text-slate-650 dark:text-slate-400 rounded-xl text-[11px] font-bold transition-all shadow-sm bg-transparent cursor-pointer"
+                      >
+                        Clean Duplicates
+                      </button>
+                    </div>
                     <button
                       type="button"
-                      onClick={handleClearGoogleEvents}
+                      onClick={() => {
+                        setConfirmConfig({
+                          isOpen: true,
+                          title: 'Purge Deleted Feed Events',
+                          message: 'Are you sure you want to permanently delete all events from deleted/unconfigured feeds (such as MVBC) from your database?',
+                          onConfirm: async () => {
+                            setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+                            setImportStatus({ type: 'loading', message: 'Purging unconfigured feed events...' });
+                            try {
+                              const { events, googleCals } = useCalendarStore.getState();
+                              const validIds = new Set(googleCals.map(c => c.id.toLowerCase()));
+                              const validSummaries = new Set(googleCals.map(c => c.summary.toLowerCase()));
+                              
+                              const orphaned = events.filter(e => {
+                                if (!e.googleEventId) return false;
+                                const cId = (e.googleCalendarId || '').toLowerCase();
+                                const cName = (e.googleCalendarName || '').toLowerCase();
+                                const notes = (e.notes || '').toLowerCase();
+                                
+                                const matchesConfigured = validIds.has(cId) || validSummaries.has(cName);
+                                return !matchesConfigured || notes.includes('mvbc') || cName.includes('mvbc') || cId.includes('mvbc');
+                              });
+
+                              for (const evt of orphaned) {
+                                await dbService.delete('events', evt.id);
+                              }
+
+                              useCalendarStore.setState({
+                                events: events.filter(e => !orphaned.some(o => o.id === e.id))
+                              });
+
+                              setImportStatus({ type: 'success', message: `Purged ${orphaned.length} leftover feed events!` });
+                              setTimeout(() => setImportStatus({ type: 'idle', message: null }), 3500);
+                            } catch (err) {
+                              setImportStatus({ type: 'error', message: err instanceof Error ? err.message : 'Purge failed.' });
+                            }
+                          }
+                        });
+                      }}
                       disabled={importStatus.type === 'loading'}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border border-rose-200 hover:border-rose-300 dark:border-rose-900/30 dark:hover:border-rose-900/60 text-rose-500 rounded-xl text-[11px] font-bold transition-all shadow-sm bg-transparent cursor-pointer"
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-xl text-[11px] font-bold transition-all border border-rose-200/50 dark:border-rose-900/30 cursor-pointer"
                     >
-                      Clear Google Events
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDeduplicateEvents}
-                      disabled={importStatus.type === 'loading'}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border border-slate-250 hover:border-slate-350 dark:border-brand-800 dark:hover:border-brand-700 text-slate-650 dark:text-slate-400 rounded-xl text-[11px] font-bold transition-all shadow-sm bg-transparent cursor-pointer"
-                    >
-                      Clean Duplicates
+                      <Trash2 size={12} /> Purge Orphaned / Deleted Feed Events (MVBC)
                     </button>
                   </div>
                 )}
