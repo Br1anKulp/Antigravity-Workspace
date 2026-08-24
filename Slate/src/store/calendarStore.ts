@@ -58,9 +58,9 @@ interface CalendarState {
     visibility: 'self' | 'both'
   ) => Promise<{ imported: number }>;
   clearGoogleEvents: () => Promise<void>;
-  clearGoogleCalendarEvents: (calendarId: string, color?: string) => Promise<void>;
+  clearGoogleCalendarEvents: (calendarId: string, color?: string, calendarName?: string) => Promise<void>;
   updateCalendarColor: (calendarId: string, newColor: string) => Promise<void>;
-  removeCalendarFeed: (calendarId: string) => Promise<void>;
+  removeCalendarFeed: (calendarId: string, summary?: string, color?: string) => Promise<void>;
   deduplicateGoogleEvents: () => Promise<void>;
 }
 
@@ -169,22 +169,25 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         await get().updateEvent(e.id, { color: newColor });
       }
     },
-    removeCalendarFeed: async (calendarId: string) => {
+    removeCalendarFeed: async (calendarId: string, summary?: string, color?: string) => {
       // 1. Instantly remove from local state and update Firestore user profile (Optimistic UI)
       set((state) => {
-        const updated = state.googleCals.filter(c => c.id !== calendarId);
+        const updated = state.googleCals.filter(c => c.id !== calendarId && (!summary || c.summary !== summary));
         persistCalendarConfigs(updated);
         return { googleCals: updated };
       });
 
       // 2. Clear associated events from Firestore database in parallel
-      await get().clearGoogleCalendarEvents(calendarId);
+      await get().clearGoogleCalendarEvents(calendarId, color, summary);
     },
     syncGoogleCalsFromEvents: (googleEvents) => {
-      const uniqueCalIds = Array.from(new Set(googleEvents.map(e => e.googleCalendarId || e.color).filter(Boolean)));
+      const authStore = useAuthStore.getState();
+      const userConfigs = authStore.user?.calendarConfigs;
       const saved = localStorage.getItem('slate_google_cals');
       let savedCals: StoredCalendar[] = [];
-      if (saved) {
+      if (userConfigs && userConfigs.length > 0) {
+        savedCals = userConfigs;
+      } else if (saved) {
         try {
           savedCals = JSON.parse(saved) as StoredCalendar[];
         } catch {
@@ -193,46 +196,29 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
       }
 
       set(state => {
-        const updated = [...state.googleCals];
         let changed = false;
-        
-        uniqueCalIds.forEach(calId => {
-          const match = savedCals.find((sc) => sc.id === calId || sc.color === calId);
-          if (saved) {
-            if (!match || !match.selected) {
-              return;
-            }
+        // Start from existing googleCals
+        const updated = state.googleCals.map(c => {
+          const sample = googleEvents.find(e => e.googleCalendarId === c.id || e.color === c.color);
+          if (sample && sample.googleCalendarName && sample.googleCalendarName !== c.summary && (!c.summary || c.summary.startsWith('http') || c.summary === 'Imported Calendar')) {
+            changed = true;
+            return { ...c, summary: sample.googleCalendarName };
           }
+          return c;
+        });
 
-          const existingIndex = updated.findIndex(c => c.id === calId || c.color === calId);
-          const sampleEvent = googleEvents.find(e => e.googleCalendarId === calId || e.color === calId);
-          const fallbackName = sampleEvent?.googleCalendarName || 'Imported Calendar';
-
-          if (existingIndex === -1) {
-            const customName = (match && match.summary) ? match.summary : fallbackName;
-            const calColor = match ? match.color : (calId.startsWith('#') ? calId : '#3b82f6');
+        // Only add a calendar if it is explicitly in userConfigs / savedCals
+        savedCals.forEach(sc => {
+          if (!sc.id) return;
+          const exists = updated.some(u => u.id === sc.id);
+          if (!exists) {
             updated.push({
-              id: match?.id || calId,
-              summary: customName,
-              color: calColor,
-              visible: true
+              id: sc.id,
+              summary: sc.summary || sc.id,
+              color: sc.color || '#3b82f6',
+              visible: sc.selected !== false
             });
             changed = true;
-          } else {
-            const currentItem = updated[existingIndex];
-            const newSummary = (match && match.summary) ? match.summary : (sampleEvent?.googleCalendarName || currentItem.summary);
-            const newColor = (match && match.color) ? match.color : currentItem.color;
-            const newId = match ? match.id : currentItem.id;
-            
-            if (currentItem.summary !== newSummary || currentItem.color !== newColor || currentItem.id !== newId) {
-              updated[existingIndex] = {
-                ...currentItem,
-                id: newId,
-                summary: newSummary,
-                color: newColor
-              };
-              changed = true;
-            }
           }
         });
 
@@ -741,10 +727,41 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
     }
   },
 
-  clearGoogleCalendarEvents: async (calendarId, color) => {
-    const googleEvents = get().events.filter(e => 
-      !!e.googleEventId && (e.googleCalendarId === calendarId || (!!color && e.color === color))
-    );
+  clearGoogleCalendarEvents: async (calendarId, color, calendarName) => {
+    const targetId = calendarId ? calendarId.trim().toLowerCase() : '';
+    const targetName = calendarName ? calendarName.trim().toLowerCase() : '';
+
+    const googleEvents = get().events.filter(e => {
+      if (!e.googleEventId) return false;
+      const eCalId = (e.googleCalendarId || '').trim().toLowerCase();
+      const eCalName = (e.googleCalendarName || '').trim().toLowerCase();
+      const eNotes = (e.notes || '').toLowerCase();
+
+      // Check match by ID / URL
+      if (targetId && (eCalId === targetId || eCalId.includes(targetId) || targetId.includes(eCalId))) {
+        return true;
+      }
+      // Check match by name (e.g. "MVBC")
+      if (targetName && (eCalName === targetName || eCalName.includes(targetName) || eNotes.includes(targetName))) {
+        return true;
+      }
+      // If targetId itself looks like a calendar name (e.g. "MVBC")
+      if (targetId && (eCalName === targetId || eCalName.includes(targetId) || eNotes.includes(targetId))) {
+        return true;
+      }
+      // Check match by exact color if specified
+      if (color && e.color === color) {
+        return true;
+      }
+      return false;
+    });
+
+    // Optimistically update local store events immediately
+    const matchedIds = new Set(googleEvents.map(e => e.id));
+    set(state => ({
+      events: state.events.filter(e => !matchedIds.has(e.id))
+    }));
+
     const CHUNK_SIZE = 25;
     for (let i = 0; i < googleEvents.length; i += CHUNK_SIZE) {
       const chunk = googleEvents.slice(i, i + CHUNK_SIZE);

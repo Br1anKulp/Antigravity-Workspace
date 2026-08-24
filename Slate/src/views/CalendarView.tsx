@@ -61,8 +61,12 @@ export const CalendarView: React.FC = () => {
       // If it's an imported iCal or Google event
       if (e.googleEventId) {
         if (!showGoogleEvents) return false;
-        const match = googleCals.find(c => c.id === e.googleCalendarId || c.color === e.color);
-        return match ? match.visible : true;
+        const match = googleCals.find(c => c.id === e.googleCalendarId || c.color === e.color || (e.googleCalendarName && c.summary === e.googleCalendarName));
+        if (match) {
+          return match.visible;
+        }
+        // If the calendar feed was deleted or not in active feeds, do not show it if there are configured feeds
+        return false;
       }
       
       // Native Slate event filtering based on assignee/creator

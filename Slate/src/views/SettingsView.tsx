@@ -620,7 +620,7 @@ export const SettingsView: React.FC = () => {
                             setImportStatus({ type: 'loading', message: `Removing ${cal.summary}...` });
                             try {
                               const { removeCalendarFeed } = useCalendarStore.getState();
-                              await removeCalendarFeed(cal.id);
+                              await removeCalendarFeed(cal.id, cal.summary, cal.color);
                               setImportStatus({ type: 'success', message: `Successfully deleted "${cal.summary}" calendar!` });
                               setTimeout(() => setImportStatus({ type: 'idle', message: null }), 3500);
                             } catch (err) {
@@ -663,7 +663,7 @@ export const SettingsView: React.FC = () => {
                             setImportStatus({ type: 'loading', message: `Removing ${cal.summary} events...` });
                             try {
                               const { clearGoogleCalendarEvents } = useCalendarStore.getState();
-                              await clearGoogleCalendarEvents(cal.id, cal.color);
+                              await clearGoogleCalendarEvents(cal.id, cal.color, cal.summary);
                               setImportStatus({ type: 'success', message: `Successfully deleted "${cal.summary}" events!` });
                               setTimeout(() => setImportStatus({ type: 'idle', message: null }), 3500);
                             } catch (err) {
