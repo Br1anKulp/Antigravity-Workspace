@@ -51,11 +51,11 @@ export const CalendarView: React.FC = () => {
   }
 
   // Helper functions
-  const isEventPassed = (e: CalendarEvent) => {
+  const isEventPassed = React.useCallback((e: CalendarEvent) => {
     return new Date(e.end) < new Date();
-  };
+  }, []);
 
-  const getFilteredEvents = (startDate: Date, endDate: Date) => {
+  const getFilteredEvents = React.useCallback((startDate: Date, endDate: Date) => {
     const raw = getExpandedEvents(startDate, endDate);
     return raw.filter(e => {
       // If it's an imported iCal or Google event
@@ -82,18 +82,18 @@ export const CalendarView: React.FC = () => {
 
       return true;
     });
-  };
+  }, [getExpandedEvents, showGoogleEvents, googleCals]);
 
-  const isEventOnDay = (event: CalendarEvent, day: Date) => {
+  const isEventOnDay = React.useCallback((event: CalendarEvent, day: Date) => {
     const start = parseISO(event.start);
     const end = parseISO(event.end);
     const dayStart = startOfDay(day);
     const dayEnd = endOfDay(day);
     return start <= dayEnd && end >= dayStart;
-  };
+  }, []);
 
   // Open creation modal
-  const openCreateModal = (date: Date, hourStr?: string) => {
+  const openCreateModal = React.useCallback((date: Date, hourStr?: string) => {
     setSelectedEvent(null);
     if (hourStr) {
       const parts = hourStr.split(':');
@@ -116,7 +116,7 @@ export const CalendarView: React.FC = () => {
       setSelectedEvent(null);
     }
     setShowAddModal(true);
-  };
+  }, [user?.avatarColor]);
 
   // Open edit modal
   const openEditModal = React.useCallback((event: CalendarEvent) => {

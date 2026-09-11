@@ -78,7 +78,12 @@ const persistCalendarConfigs = (cals: Array<{ id: string; summary: string; color
     color: u.color,
     selected: u.visible
   }));
-  localStorage.setItem('slate_google_cals', JSON.stringify(mapped));
+  const currentSaved = localStorage.getItem('slate_google_cals');
+  const newJson = JSON.stringify(mapped);
+  if (currentSaved === newJson) {
+    return; // Avoid unnecessary Firestore profile writes and re-render cascades
+  }
+  localStorage.setItem('slate_google_cals', newJson);
   
   const authStore = useAuthStore.getState();
   if (authStore.user) {

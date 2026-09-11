@@ -114,19 +114,22 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
     }
   }, [currentTab, messages, lastReadChat, updateProfile]);
 
-  const overdueTasksCount = tasks.filter(t => {
-    if (t.completed) return false;
-    if (!t.dueDate) return false;
+  const overdueTasksCount = React.useMemo(() => {
     const today = new Date();
     const year = today.getFullYear();
     const month = String(today.getMonth() + 1).padStart(2, '0');
     const day = String(today.getDate()).padStart(2, '0');
     const localTodayStr = `${year}-${month}-${day}`;
-    return t.dueDate < localTodayStr;
-  }).length;
+    return tasks.filter(t => !t.completed && t.dueDate && t.dueDate < localTodayStr).length;
+  }, [tasks]);
 
-  const unreadChatCount = currentTab === 'chat' ? 0 : messages.filter(m => m.senderId !== user?.uid && m.timestamp > lastReadChat).length;
-  const activeListItemsCount = listItems.filter(i => !i.completed).length;
+  const unreadChatCount = React.useMemo(() => {
+    return currentTab === 'chat' ? 0 : messages.filter(m => m.senderId !== user?.uid && m.timestamp > lastReadChat).length;
+  }, [currentTab, messages, user?.uid, lastReadChat]);
+
+  const activeListItemsCount = React.useMemo(() => {
+    return listItems.filter(i => !i.completed).length;
+  }, [listItems]);
 
   const navItems = [
     { id: 'calendar', name: 'Calendar', icon: Calendar },
