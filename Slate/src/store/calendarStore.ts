@@ -91,6 +91,8 @@ const persistCalendarConfigs = (cals: Array<{ id: string; summary: string; color
   }
 };
 
+const activeIcalSyncs = new Set<string>();
+
 export const useCalendarStore = create<CalendarState>((set, get) => {
   const getInitialGoogleCals = () => {
     const authStore = useAuthStore.getState();
@@ -584,11 +586,17 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
     const user = authStore.user;
     if (!user) throw new Error('Unauthenticated');
 
-    let targetUrl = feedUrl.trim();
-    if (targetUrl.startsWith('webcal://')) {
-      targetUrl = 'https://' + targetUrl.slice(9);
+    if (activeIcalSyncs.has(feedUrl)) {
+      return { imported: 0 };
     }
-    targetUrl = targetUrl.replace(/%40/gi, '@');
+    activeIcalSyncs.add(feedUrl);
+
+    try {
+      let targetUrl = feedUrl.trim();
+      if (targetUrl.startsWith('webcal://')) {
+        targetUrl = 'https://' + targetUrl.slice(9);
+      }
+      targetUrl = targetUrl.replace(/%40/gi, '@');
 
     let icalText = '';
     let success = false;
@@ -715,8 +723,13 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
       await Promise.all(chunk.map(fn => fn().catch(err => console.error('iCal event write error:', err))));
     }
 
-    await get().deduplicateGoogleEvents();
+    if (imported > 0) {
+      await get().deduplicateGoogleEvents();
+    }
     return { imported };
+    } finally {
+      activeIcalSyncs.delete(feedUrl);
+    }
   },
 
   clearGoogleEvents: async () => {
