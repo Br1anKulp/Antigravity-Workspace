@@ -30,9 +30,9 @@ export const DayDetailModal: React.FC<DayDetailModalProps> = ({
   const dayEvents = getFilteredEvents(startOfDay(selectedDate), endOfDay(selectedDate));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="w-full max-w-2xl bg-white dark:bg-brand-900 border border-slate-200 dark:border-brand-800 rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]">
-        <div className="flex justify-between items-center mb-4 border-b border-slate-150 dark:border-brand-850 pb-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-200">
+      <div className="w-full max-w-2xl bg-white dark:bg-brand-900 border border-slate-200 dark:border-brand-800 rounded-3xl p-4 sm:p-6 shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh] sm:max-h-[85vh]">
+        <div className="flex justify-between items-center mb-3 sm:mb-4 border-b border-slate-150 dark:border-brand-850 pb-2.5 sm:pb-3">
           <div>
             <h3 className="text-[10px] font-extrabold text-slate-400 dark:text-slate-550 uppercase tracking-widest">
               Selected Day Overview

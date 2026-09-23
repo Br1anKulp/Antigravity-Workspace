@@ -2,10 +2,8 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useCalendarStore } from '../store/calendarStore';
-import { CAL_PALETTE } from '../utils/constants';
 import { useTasksStore } from '../store/tasksStore';
 import { useNotesStore } from '../store/notesStore';
-import { safeTokenStorage } from '../utils/storage';
 import { 
   User, 
   Bell, 
@@ -15,24 +13,14 @@ import {
   Check, 
   Database,
   Calendar,
-  Link,
-  RefreshCw,
-  Trash2
+  Sparkles
 } from 'lucide-react';
 import { isMockMode } from '../firebase/config';
-import { dbService } from '../firebase/db';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 
-interface StoredCalendar {
-  id: string;
-  summary?: string;
-  color: string;
-  selected?: boolean;
-}
-
 export const SettingsView: React.FC = () => {
-  const { user, partner, updateProfile, theme, getGoogleCalendarToken } = useAuthStore();
-  const { events, importGoogleEvents, clearGoogleEvents, deduplicateGoogleEvents } = useCalendarStore();
+  const { user, partner, updateProfile, theme } = useAuthStore();
+  const { events, deduplicateEvents } = useCalendarStore();
   const { tasks } = useTasksStore();
   const { notes } = useNotesStore();
 
@@ -46,85 +34,6 @@ export const SettingsView: React.FC = () => {
     type: 'idle',
     message: null
   });
-
-  const [googleToken, setGoogleToken] = useState<string | null>(null);
-  const [discoveredCalendars, setDiscoveredCalendars] = useState<Array<{ id: string; summary: string; primary: boolean; selected: boolean; visibility: 'self' | 'both'; color: string }>>([]);
-  const [showCalendarConfig, setShowCalendarConfig] = useState(false);
-  const { googleCals } = useCalendarStore();
-  const configuredCalendars = React.useMemo(() => {
-    return user?.calendarConfigs && user.calendarConfigs.length > 0
-      ? user.calendarConfigs.map(c => ({
-          id: c.id,
-          summary: c.summary,
-          selected: c.selected,
-          visibility: (c.visibility || 'both') as 'self' | 'both',
-          color: c.color
-        }))
-      : googleCals.map(c => ({
-          id: c.id,
-          summary: c.summary,
-          selected: c.visible,
-          visibility: 'both' as const,
-          color: c.color
-        }));
-  }, [user, googleCals]);
-
-  const [icalUrl, setIcalUrl] = useState('');
-  const [icalName, setIcalName] = useState('');
-  const [icalColor, setIcalColor] = useState('#4f46e5');
-  const [icalVisibility, setIcalVisibility] = useState<'both' | 'self'>('both');
-  const [icalStatus, setIcalStatus] = useState<{ type: 'idle' | 'loading' | 'success' | 'error'; message: string | null }>({ type: 'idle', message: null });
-  const [syncingFeeds, setSyncingFeeds] = useState<Record<string, boolean>>({});
-
-  const handleSyncNow = async (cal: { id: string; summary: string; color: string; visibility: string }) => {
-    setSyncingFeeds(prev => ({ ...prev, [cal.id]: true }));
-    try {
-      const { syncIcalFeed } = useCalendarStore.getState();
-      const res = await syncIcalFeed(cal.id, cal.summary, cal.color, cal.visibility as 'both' | 'self');
-      setIcalStatus({ type: 'success', message: `"${cal.summary}" synced! Updated ${res.imported} events.` });
-    } catch (err) {
-      setIcalStatus({ type: 'error', message: err instanceof Error ? err.message : 'Sync failed.' });
-    } finally {
-      setSyncingFeeds(prev => ({ ...prev, [cal.id]: false }));
-    }
-  };
-
-  const handleSyncIcalFeed = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!icalUrl) return;
-
-    let cleanUrl = icalUrl.trim();
-    if (cleanUrl.startsWith('webcal://')) {
-      cleanUrl = 'https://' + cleanUrl.slice(9);
-    }
-    cleanUrl = cleanUrl.replace(/%40/gi, '@');
-
-    setIcalStatus({ type: 'loading', message: 'Syncing live iCal feed...' });
-    try {
-      const feedName = icalName.trim() || 'Live Google iCal';
-      const syncIcalFeed = useCalendarStore.getState().syncIcalFeed;
-      const res = await syncIcalFeed(cleanUrl, feedName, icalColor, icalVisibility);
-
-      const newCal = { id: cleanUrl, summary: feedName, selected: true, visibility: icalVisibility, color: icalColor };
-      const updatedConfigured = [...configuredCalendars.filter(c => c.id !== cleanUrl), newCal];
-      localStorage.setItem('slate_google_cals', JSON.stringify(updatedConfigured));
-      if (user) {
-        updateProfile({ calendarConfigs: updatedConfigured });
-      }
-
-      const activeCals = updatedConfigured
-        .filter(c => c.selected)
-        .map(c => ({ id: c.id, summary: c.summary, color: c.color, visible: true }));
-      useCalendarStore.getState().setGoogleCals(activeCals);
-
-      setIcalStatus({ type: 'success', message: `Live iCal synced! Imported/updated ${res.imported} events.` });
-      setIcalUrl('');
-      setIcalName('');
-    } catch (err) {
-      console.error(err);
-      setIcalStatus({ type: 'error', message: err instanceof Error ? err.message : 'Failed to fetch iCal feed.' });
-    }
-  };
 
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
@@ -147,163 +56,17 @@ export const SettingsView: React.FC = () => {
     });
   }, []);
 
-  const partnerCals = React.useMemo(() => {
-    if (!partner) return [];
-    const partnerEvents = events.filter(e => !!e.googleEventId && e.creatorId === partner.uid);
-    const calsMap = new Map<string, { id: string; summary: string; color: string; creatorName: string }>();
-    partnerEvents.forEach(e => {
-      const calId = e.googleCalendarId || e.color;
-      if (!calsMap.has(calId)) {
-        calsMap.set(calId, {
-          id: calId,
-          summary: e.googleCalendarName || (e.notes?.startsWith('Imported from Google Calendar') ? 'Google Calendar' : (e.notes || 'Google Calendar')),
-          color: e.color,
-          creatorName: partner.name
-        });
-      }
-    });
-    return Array.from(calsMap.values());
-  }, [events, partner]);
-
-
-
-  const handleConnectGoogle = async () => {
-    setImportStatus({ type: 'loading', message: 'Authorizing with Google...' });
-    try {
-      const token = await getGoogleCalendarToken();
-      if (!token) {
-        setImportStatus({ type: 'error', message: 'Authorization cancelled or failed.' });
-        return;
-      }
-      setGoogleToken(token);
-      safeTokenStorage.setToken(token, user?.uid);
-      localStorage.setItem('slate_google_token_expiry', (Date.now() + 3550 * 1000).toString());
-      setImportStatus({ type: 'loading', message: 'Retrieving your calendars...' });
-
-      let list: Array<{ id: string; summary: string; primary: boolean; selected: boolean; visibility: 'self' | 'both'; color: string }> = [];
-      if (token === 'mock-google-token-xyz123') {
-        list = [
-          { id: 'primary', summary: '👤 Primary Calendar', primary: true, selected: true, visibility: 'both' as const, color: CAL_PALETTE[0] },
-          { id: 'work-cal', summary: '💻 Work Projects', primary: false, selected: false, visibility: 'self' as const, color: CAL_PALETTE[1] },
-          { id: 'family-cal', summary: '🥞 Family Brunch & Trips', primary: false, selected: false, visibility: 'both' as const, color: CAL_PALETTE[2] }
-        ];
-      } else {
-        const response = await fetch('https://www.googleapis.com/calendar/v3/users/me/calendarList', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (!response.ok) {
-          const errText = await response.text();
-          throw new Error(`Failed to retrieve Google calendars list: ${response.status} ${response.statusText} - ${errText}`);
-        }
-        interface GoogleApiCalendarListEntry {
-          id: string;
-          summary: string;
-          primary?: boolean;
-        }
-        const data = await response.json();
-        list = ((data.items || []) as GoogleApiCalendarListEntry[]).map((item, idx: number) => ({
-          id: item.id,
-          summary: item.summary,
-          primary: !!item.primary,
-          selected: !!item.primary,
-          visibility: item.primary ? ('both' as const) : ('self' as const),
-          color: CAL_PALETTE[idx % CAL_PALETTE.length]
-        }));
-      }
-
-      const savedConfig = localStorage.getItem('slate_google_cals');
-      if (savedConfig) {
-        try {
-          const parsed = JSON.parse(savedConfig) as StoredCalendar[];
-          list = list.map((item) => {
-            const match = parsed.find((p) => p.id === item.id);
-            if (match) {
-              return { 
-                ...item, 
-                selected: !!match.selected, 
-                visibility: match.selected ? item.visibility : 'self', 
-                color: match.color || item.color,
-                summary: match.summary || item.summary
-              };
-            }
-            return item;
-          });
-        } catch (e) {
-          console.warn('Error reading saved calendar config', e);
-        }
-      }
-
-      setDiscoveredCalendars(list);
-      setShowCalendarConfig(true);
-      setImportStatus({ type: 'idle', message: null });
-    } catch (err) {
-      console.error(err);
-      setImportStatus({ type: 'error', message: err instanceof Error ? err.message : 'Connection failed.' });
-    }
-  };
-
-  const handleSyncCalendars = async () => {
-    if (!googleToken) return;
-    const targets = discoveredCalendars.filter(c => c.selected);
-    if (targets.length === 0) {
-      setImportStatus({ type: 'error', message: 'Please select at least one calendar to sync.' });
-      return;
-    }
-
-    setImportStatus({ type: 'loading', message: 'Syncing chosen calendars...' });
-    try {
-      // Save current selection config (including chosen color and summary)
-      const saveState = discoveredCalendars.map(c => ({ id: c.id, summary: c.summary, selected: c.selected, visibility: c.visibility, color: c.color }));
-      localStorage.setItem('slate_google_cals', JSON.stringify(saveState));
-      if (user) {
-        updateProfile({ calendarConfigs: saveState });
-      }
-
-      // Instantly update sidebar googleCals state
-      const activeCals = saveState
-        .filter(c => c.selected)
-        .map(c => ({ id: c.id, summary: c.summary, color: c.color, visible: true }));
-      useCalendarStore.getState().setGoogleCals(activeCals);
-
-      const result = await importGoogleEvents(googleToken, targets.map(t => ({ id: t.id, visibility: t.visibility, color: t.color, summary: t.summary })));
-      localStorage.setItem('slate_last_google_sync', Date.now().toString());
-      setImportStatus({
-        type: 'success',
-        message: `Import complete! Added ${result.imported} events (skipped ${result.skipped} duplicates).`
-      });
-      setShowCalendarConfig(false);
-      setGoogleToken(null);
-    } catch (err) {
-      console.error(err);
-      setImportStatus({ type: 'error', message: err instanceof Error ? err.message : 'Sync failed.' });
-    }
-  };
-
-  const handleClearGoogleEvents = () => {
-    setConfirmConfig({
-      isOpen: true,
-      title: 'Clear Google Calendar Events',
-      message: "Are you sure you want to permanently delete your imported Google Calendar events from Slate? (This will not affect your partner's imported events).",
-      onConfirm: async () => {
-        setConfirmConfig(prev => ({ ...prev, isOpen: false }));
-        setImportStatus({ type: 'loading', message: 'Removing Google events...' });
-        try {
-          await clearGoogleEvents();
-          setImportStatus({ type: 'success', message: 'Your Google Calendar events successfully removed!' });
-          setTimeout(() => setImportStatus({ type: 'idle', message: null }), 3500);
-        } catch (err) {
-          console.error(err);
-          setImportStatus({ type: 'error', message: err instanceof Error ? err.message : 'Failed to remove events.' });
-        }
-      }
-    });
-  };
-
   const handleDeduplicateEvents = async () => {
-    setImportStatus({ type: 'loading', message: 'Cleaning duplicate calendar events...' });
+    setImportStatus({ type: 'loading', message: 'Reconciling shared calendar events...' });
     try {
-      await deduplicateGoogleEvents();
-      setImportStatus({ type: 'success', message: 'Calendar deduplicated successfully!' });
+      const res = await deduplicateEvents();
+      setImportStatus({ 
+        type: 'success', 
+        message: res.deletedCount > 0
+          ? `Cleaned up ${res.deletedCount} duplicate event(s)! Calendar is synchronized.`
+          : 'No duplicate events found. Calendar is fully clean!'
+      });
+      setTimeout(() => setImportStatus({ type: 'idle', message: null }), 4000);
     } catch (err) {
       console.error(err);
       setImportStatus({ type: 'error', message: err instanceof Error ? err.message : 'Deduplication failed.' });
@@ -564,532 +327,52 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Google Calendar Integration Box */}
+        {/* Shared Calendar Management */}
         <div className="bg-white dark:bg-brand-900 border border-slate-200 dark:border-brand-800 rounded-3xl p-6 shadow-sm flex flex-col justify-between gap-4 md:col-span-2">
-          <div className="space-y-4">
-            <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-              <Calendar size={14} className="text-blue-500" /> Google Integration
-            </h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed">
-              Connect your Google account to discover calendars, choose which ones to import, and configure private vs shared visibility.
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <Calendar size={14} className="text-indigo-500" /> Shared Family Calendar
+              </h3>
+              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400">
+                Real-Time Sync Active
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              Slate operates as a private, real-time shared calendar exclusively between you and Chelsea. Any event added, updated, or removed by either person syncs immediately across all devices without pulling in external feeds.
             </p>
           </div>
-          
-          <div className="space-y-3">
-            {!showCalendarConfig && (configuredCalendars.length > 0 || partnerCals.length > 0) && (
-              <div className="border border-slate-200 dark:border-brand-800 rounded-2xl p-3 bg-slate-50/50 dark:bg-brand-950/20 space-y-2.5 max-h-[200px] overflow-y-auto no-scrollbar">
-                <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 block mb-1">Configured Calendars</span>
-                
-                {/* My Calendars */}
-                {configuredCalendars.map((cal) => (
-                  <div key={cal.id} className="flex items-center justify-between text-xs py-1.5 border-b border-slate-100 dark:border-brand-850 last:border-b-0 last:pb-0 gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className="w-2 h-2 rounded-full shrink-0 ring-1 ring-black/10"
-                        style={{ backgroundColor: cal.color }}
-                      />
-                      <span className="font-semibold truncate text-slate-700 dark:text-slate-350">{cal.summary}</span>
-                      <span className="text-[9px] px-1.5 py-0.2 bg-slate-100 dark:bg-brand-850 rounded text-slate-400 shrink-0 capitalize">
-                        {cal.visibility === 'both' ? 'Shared' : 'Private'}
-                      </span>
-                      <span className="text-[8px] px-1 bg-blue-100 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded shrink-0 font-extrabold">
-                        By You
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      {(cal.id.startsWith('http') || cal.id.includes('.ics')) && (
-                        <button
-                          type="button"
-                          onClick={() => handleSyncNow(cal)}
-                          disabled={syncingFeeds[cal.id]}
-                          className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold rounded-lg bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-950/70 disabled:opacity-50 transition-colors cursor-pointer"
-                          title="Sync now"
-                        >
-                          <RefreshCw size={10} className={syncingFeeds[cal.id] ? 'animate-spin' : ''} />
-                          {syncingFeeds[cal.id] ? 'Syncing...' : 'Sync Now'}
-                        </button>
-                      )}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setConfirmConfig({
-                          isOpen: true,
-                          title: 'Delete Calendar Configuration',
-                          message: `Are you sure you want to completely delete "${cal.summary}" and remove all of its events from Slate across all your devices?`,
-                          onConfirm: async () => {
-                            setConfirmConfig(prev => ({ ...prev, isOpen: false }));
-                            setImportStatus({ type: 'loading', message: `Removing ${cal.summary}...` });
-                            try {
-                              const { removeCalendarFeed } = useCalendarStore.getState();
-                              await removeCalendarFeed(cal.id, cal.summary, cal.color);
-                              setImportStatus({ type: 'success', message: `Successfully deleted "${cal.summary}" calendar!` });
-                              setTimeout(() => setImportStatus({ type: 'idle', message: null }), 3500);
-                            } catch (err) {
-                              setImportStatus({ type: 'error', message: err instanceof Error ? err.message : 'Failed to remove calendar.' });
-                            }
-                          }
-                        });
-                      }}
-                      className="p-1 hover:text-rose-500 text-slate-400 dark:text-slate-500 transition-colors shrink-0"
-                      title="Delete calendar configuration and events"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                    </div>
-                  </div>
-                ))}
 
-                {/* Partner's Calendars */}
-                {partnerCals.map((cal) => (
-                  <div key={cal.id} className="flex items-center justify-between text-xs py-1.5 border-b border-slate-100 dark:border-brand-850 last:border-b-0 last:pb-0 gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className="w-2 h-2 rounded-full shrink-0 ring-1 ring-black/10"
-                        style={{ backgroundColor: cal.color }}
-                      />
-                      <span className="font-semibold truncate text-slate-700 dark:text-slate-350">{cal.summary}</span>
-                      <span className="text-[8px] px-1 bg-pink-100 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 rounded shrink-0 font-extrabold">
-                        By {cal.creatorName}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setConfirmConfig({
-                          isOpen: true,
-                          title: 'Delete Partner Calendar Events',
-                          message: `Are you sure you want to delete events for "${cal.summary}" imported by ${cal.creatorName}?`,
-                          onConfirm: async () => {
-                            setConfirmConfig(prev => ({ ...prev, isOpen: false }));
-                            setImportStatus({ type: 'loading', message: `Removing ${cal.summary} events...` });
-                            try {
-                              const { clearGoogleCalendarEvents } = useCalendarStore.getState();
-                              await clearGoogleCalendarEvents(cal.id, cal.color, cal.summary);
-                              setImportStatus({ type: 'success', message: `Successfully deleted "${cal.summary}" events!` });
-                              setTimeout(() => setImportStatus({ type: 'idle', message: null }), 3500);
-                            } catch (err) {
-                              setImportStatus({ type: 'error', message: err instanceof Error ? err.message : 'Failed to remove partner calendar events.' });
-                            }
-                          }
-                        });
-                      }}
-                      className="p-1 hover:text-rose-500 text-slate-400 dark:text-slate-500 transition-colors shrink-0"
-                      title={`Delete events imported by ${cal.creatorName}`}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {importStatus.message && (
-              <div className={`text-xs font-semibold py-1.5 px-3 rounded-xl border ${
-                importStatus.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
-                importStatus.type === 'error' ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' :
-                'bg-blue-500/10 border-blue-500/20 text-blue-500 animate-pulse'
-              }`}>
-                {importStatus.message}
-              </div>
-            )}
-
-            {showCalendarConfig && discoveredCalendars.length > 0 && (
-              <div className="border border-slate-200 dark:border-brand-800 rounded-2xl p-3 bg-slate-50/50 dark:bg-brand-950/20 space-y-2.5 max-h-[240px] overflow-y-auto no-scrollbar">
-                <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 block mb-1">Select Calendars, Color & Visibility</span>
-                {discoveredCalendars.map((cal, idx) => (
-                  <div key={cal.id} className="text-xs py-1.5 border-b border-slate-100 dark:border-brand-850 last:border-b-0 last:pb-0 space-y-2">
-                    {/* Row 1: Checkbox + name + specific trash can */}
-                    <div className="flex items-center justify-between w-full gap-2">
-                      <label className="flex items-center gap-2 cursor-pointer font-semibold flex-1 min-w-0">
-                        <input
-                          type="checkbox"
-                          checked={cal.selected}
-                          onChange={e => {
-                            const updated = [...discoveredCalendars];
-                            updated[idx].selected = e.target.checked;
-                            setDiscoveredCalendars(updated);
-                          }}
-                          className="rounded text-indigo-650 focus:ring-indigo-500/20 w-3.5 h-3.5 shrink-0"
-                        />
-                        <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-black/10"
-                          style={{ backgroundColor: cal.color }}
-                        />
-                        <input
-                          type="text"
-                          value={cal.summary}
-                          onChange={e => {
-                            const updated = [...discoveredCalendars];
-                            updated[idx].summary = e.target.value;
-                            setDiscoveredCalendars(updated);
-                          }}
-                          className="px-2 py-0.5 bg-slate-50 dark:bg-brand-950 border border-slate-200 dark:border-brand-850 rounded text-xs font-semibold focus:outline-none w-full min-w-0"
-                        />
-                      </label>
-                      
-                      <button
-                         type="button"
-                         onClick={() => {
-                           setConfirmConfig({
-                             isOpen: true,
-                             title: "Delete Calendar Events",
-                             message: `Are you sure you want to permanently delete all imported events for "${cal.summary}" from Slate?`,
-                             onConfirm: async () => {
-                               setConfirmConfig(prev => ({ ...prev, isOpen: false }));
-                               setImportStatus({ type: "loading", message: `Removing ${cal.summary} events...` });
-                               try {
-                                 const { clearGoogleCalendarEvents } = useCalendarStore.getState();
-                                 await clearGoogleCalendarEvents(cal.id, cal.color);
-                                 setImportStatus({
-                                   type: "success",
-                                   message: `Successfully removed all events for "${cal.summary}"!`
-                                 });
-                                 setTimeout(() => setImportStatus({ type: 'idle', message: null }), 3500);
-                               } catch (err) {
-                                 setImportStatus({ type: "error", message: err instanceof Error ? err.message : "Failed to remove calendar events." });
-                               }
-                             }
-                           });
-                         }}
-                         className="p-1 hover:text-rose-500 text-slate-400 dark:text-slate-500 transition-colors shrink-0"
-                         title={`Delete synced events for ${cal.summary}`}
-                       >
-                         <Trash2 size={13} />
-                       </button>
-                     </div>
-
-                     {/* Row 2: Color picker + visibility (only when selected) */}
-                     {cal.selected && (
-                       <div className="flex flex-col gap-2 pl-5">
-                         <div className="grid grid-cols-10 gap-1">
-                           {CAL_PALETTE.map(c => (
-                             <button
-                               key={c}
-                               type="button"
-                               onClick={() => {
-                                 const updated = [...discoveredCalendars];
-                                 updated[idx].color = c;
-                                 setDiscoveredCalendars(updated);
-                               }}
-                               className="w-4 h-4 rounded-full transition-all shrink-0 cursor-pointer"
-                               style={{
-                                 backgroundColor: c,
-                                 boxShadow: cal.color === c ? `0 0 0 2px white, 0 0 0 3.5px ${c}` : "none",
-                                 transform: cal.color === c ? "scale(1.2)" : "scale(1)"
-                               }}
-                               title={c}
-                             />
-                           ))}
-                         </div>
-                         <select
-                            value={cal.visibility}
-                            onChange={e => {
-                              const updated = [...discoveredCalendars];
-                               updated[idx].visibility = e.target.value as 'self' | 'both';
-                              setDiscoveredCalendars(updated);
-                            }}
-                            className="px-2 py-1 bg-white dark:bg-brand-950 border border-slate-250 dark:border-brand-800 rounded-lg text-[10px] font-bold focus:outline-none shrink-0 text-slate-900 dark:text-slate-100"
-                         >
-                           <option value="both">Shared (Both)</option>
-                           <option value="self">Private (Me)</option>
-                         </select>
-                       </div>
-                     )}
-                   </div>
-                 ))}
-               </div>
-             )}
-            {importStatus.message && (
-              <div className={`text-xs font-semibold py-1.5 px-3 rounded-xl border ${
-                importStatus.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
-                importStatus.type === 'error' ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' :
-                'bg-blue-500/10 border-blue-500/20 text-blue-500 animate-pulse'
-              }`}>
-                {importStatus.message}
-              </div>
-            )}
-
-            {showCalendarConfig && discoveredCalendars.length > 0 && (
-              <div className="border border-slate-200 dark:border-brand-800 rounded-2xl p-3 bg-slate-50/50 dark:bg-brand-950/20 space-y-2.5 max-h-[240px] overflow-y-auto no-scrollbar">
-                <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 block mb-1">Select Calendars, Color & Visibility</span>
-                {discoveredCalendars.map((cal, idx) => (
-                  <div key={cal.id} className="text-xs py-1.5 border-b border-slate-100 dark:border-brand-850 last:border-b-0 last:pb-0 space-y-2">
-                    {/* Row 1: Checkbox + name + specific trash can */}
-                    <div className="flex items-center justify-between w-full gap-2">
-                      <label className="flex items-center gap-2 cursor-pointer font-semibold flex-1 min-w-0">
-                        <input
-                          type="checkbox"
-                          checked={cal.selected}
-                          onChange={e => {
-                            const updated = [...discoveredCalendars];
-                            updated[idx].selected = e.target.checked;
-                            setDiscoveredCalendars(updated);
-                          }}
-                          className="rounded text-indigo-650 focus:ring-indigo-500/20 w-3.5 h-3.5 shrink-0"
-                        />
-                        <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-black/10"
-                          style={{ backgroundColor: cal.color }}
-                        />
-                        <input
-                          type="text"
-                          value={cal.summary}
-                          onChange={e => {
-                            const updated = [...discoveredCalendars];
-                            updated[idx].summary = e.target.value;
-                            setDiscoveredCalendars(updated);
-                          }}
-                          className="px-2 py-0.5 bg-slate-50 dark:bg-brand-950 border border-slate-200 dark:border-brand-850 rounded text-xs font-semibold focus:outline-none w-full min-w-0"
-                        />
-                      </label>
-                      
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setConfirmConfig({
-                            isOpen: true,
-                            title: 'Delete Calendar Events',
-                            message: `Are you sure you want to permanently delete all imported events for "${cal.summary}" from Slate?`,
-                            onConfirm: async () => {
-                              setImportStatus({ type: 'loading', message: `Removing ${cal.summary} events...` });
-                              try {
-                                const { clearGoogleCalendarEvents } = useCalendarStore.getState();
-                                await clearGoogleCalendarEvents(cal.id, cal.color);
-                                setImportStatus({
-                                  type: 'success',
-                                  message: `Successfully removed all events for "${cal.summary}"!`
-                                });
-                              } catch (err) {
-                                setImportStatus({ type: 'error', message: err instanceof Error ? err.message : 'Failed to remove calendar events.' });
-                              }
-                            }
-                          });
-                        }}
-                        className="p-1 hover:text-rose-500 text-slate-400 dark:text-slate-500 transition-colors shrink-0"
-                        title={`Delete synced events for ${cal.summary}`}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
-
-                    {/* Row 2: Color picker + visibility (only when selected) */}
-                    {cal.selected && (
-                      <div className="flex flex-col gap-2 pl-5">
-                        <div className="grid grid-cols-10 gap-1">
-                          {CAL_PALETTE.map(c => (
-                            <button
-                              key={c}
-                              type="button"
-                              onClick={() => {
-                                const updated = [...discoveredCalendars];
-                                updated[idx].color = c;
-                                setDiscoveredCalendars(updated);
-                              }}
-                              className="w-4 h-4 rounded-full transition-all shrink-0 cursor-pointer"
-                              style={{
-                                backgroundColor: c,
-                                boxShadow: cal.color === c ? `0 0 0 2px white, 0 0 0 3.5px ${c}` : 'none',
-                                transform: cal.color === c ? 'scale(1.2)' : 'scale(1)'
-                              }}
-                              title={c}
-                            />
-                          ))}
-                        </div>
-
-                        {/* Visibility dropdown */}
-                        <select
-                           value={cal.visibility}
-                           onChange={e => {
-                             const updated = [...discoveredCalendars];
-                             updated[idx].visibility = e.target.value as 'self' | 'both';
-                             setDiscoveredCalendars(updated);
-                           }}
-                           className="px-2 py-1 bg-white dark:bg-brand-950 border border-slate-250 dark:border-brand-800 rounded-lg text-[10px] font-bold focus:outline-none shrink-0 text-slate-900 dark:text-slate-100"
-                        >
-                          <option value="both">Shared (Both)</option>
-                          <option value="self">Private (Me)</option>
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {showCalendarConfig ? (
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowCalendarConfig(false)}
-                  className="flex-1 py-2 border border-slate-250 dark:border-brand-800 rounded-xl text-xs font-bold hover:bg-slate-50 dark:hover:bg-brand-850 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSyncCalendars}
-                  disabled={importStatus.type === 'loading'}
-                  className="flex-1 py-2 bg-indigo-650 hover:bg-indigo-550 text-white rounded-xl text-xs font-bold shadow-sm cursor-pointer"
-                >
-                  Confirm & Sync
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <button
-                  type="button"
-                  onClick={handleConnectGoogle}
-                  disabled={importStatus.type === 'loading'}
-                  className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-650 hover:bg-indigo-550 disabled:bg-slate-200 dark:disabled:bg-brand-850 text-white disabled:text-slate-400 rounded-xl text-xs font-bold transition-all shadow-sm w-full cursor-pointer"
-                >
-                  <RefreshCw size={14} className={importStatus.type === 'loading' ? 'animate-spin' : ''} />
-                  {importStatus.type === 'loading' ? 'Connecting...' : 'Connect Google Calendar'}
-                </button>
-                {events.some(e => !!e.googleEventId) && (
-                  <div className="flex flex-col gap-2 w-full">
-                    <div className="flex gap-2 w-full">
-                      <button
-                        type="button"
-                        onClick={handleClearGoogleEvents}
-                        disabled={importStatus.type === 'loading'}
-                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border border-rose-200 hover:border-rose-300 dark:border-rose-900/30 dark:hover:border-rose-900/60 text-rose-500 rounded-xl text-[11px] font-bold transition-all shadow-sm bg-transparent cursor-pointer"
-                      >
-                        Clear All Google/iCal
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleDeduplicateEvents}
-                        disabled={importStatus.type === 'loading'}
-                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 border border-slate-250 hover:border-slate-350 dark:border-brand-800 dark:hover:border-brand-700 text-slate-650 dark:text-slate-400 rounded-xl text-[11px] font-bold transition-all shadow-sm bg-transparent cursor-pointer"
-                      >
-                        Clean Duplicates
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setConfirmConfig({
-                          isOpen: true,
-                          title: 'Purge Deleted Feed Events',
-                          message: 'Are you sure you want to permanently delete all events from deleted/unconfigured feeds (such as MVBC) from your database?',
-                          onConfirm: async () => {
-                            setConfirmConfig(prev => ({ ...prev, isOpen: false }));
-                            setImportStatus({ type: 'loading', message: 'Purging unconfigured feed events...' });
-                            try {
-                              const { events, googleCals } = useCalendarStore.getState();
-                              const validIds = new Set(googleCals.map(c => c.id.toLowerCase()));
-                              const validSummaries = new Set(googleCals.map(c => c.summary.toLowerCase()));
-                              
-                              const orphaned = events.filter(e => {
-                                if (!e.googleEventId) return false;
-                                const cId = (e.googleCalendarId || '').toLowerCase();
-                                const cName = (e.googleCalendarName || '').toLowerCase();
-                                const notes = (e.notes || '').toLowerCase();
-                                
-                                const matchesConfigured = validIds.has(cId) || validSummaries.has(cName);
-                                return !matchesConfigured || notes.includes('mvbc') || cName.includes('mvbc') || cId.includes('mvbc');
-                              });
-
-                              for (const evt of orphaned) {
-                                await dbService.delete('events', evt.id);
-                              }
-
-                              useCalendarStore.setState({
-                                events: events.filter(e => !orphaned.some(o => o.id === e.id))
-                              });
-
-                              setImportStatus({ type: 'success', message: `Purged ${orphaned.length} leftover feed events!` });
-                              setTimeout(() => setImportStatus({ type: 'idle', message: null }), 3500);
-                            } catch (err) {
-                              setImportStatus({ type: 'error', message: err instanceof Error ? err.message : 'Purge failed.' });
-                            }
-                          }
-                        });
-                      }}
-                      disabled={importStatus.type === 'loading'}
-                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-xl text-[11px] font-bold transition-all border border-rose-200/50 dark:border-rose-900/30 cursor-pointer"
-                    >
-                      <Trash2 size={12} /> Purge Orphaned / Deleted Feed Events (MVBC)
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Live iCal (.ics) Address Feed Box */}
-          <div className="border-t border-slate-150 dark:border-brand-850 pt-4 mt-2">
-            <form onSubmit={handleSyncIcalFeed} className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-extrabold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
-                  <Link size={13} className="text-emerald-500" /> Live iCal (.ics) Link Auto-Sync (Public or Secret)
+          <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-brand-850">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                  Calendar Maintenance
                 </h4>
-                <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 px-2 py-0.5 rounded-full font-bold">
-                  Auto-Updates
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
-                Paste any <strong>Public</strong> or <strong>Secret</strong> iCal URL (<code className="text-[10px] text-indigo-500">https://...basic.ics</code> or <code className="text-[10px] text-indigo-500">webcal://...</code>). Slate auto-refreshes all active feeds every minute and on every tab focus.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  placeholder="https://.../basic.ics or webcal://..."
-                  value={icalUrl}
-                  onChange={e => setIcalUrl(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-brand-950 border border-slate-200 dark:border-brand-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-slate-100"
-                  required
-                />
-                <input
-                  type="text"
-                  placeholder="Calendar Label (e.g. My Live Google Cal)"
-                  value={icalName}
-                  onChange={e => setIcalName(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-brand-950 border border-slate-200 dark:border-brand-800 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-slate-800 dark:text-slate-100"
-                />
-              </div>
-              <div className="flex items-center justify-between gap-3 pt-1">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-slate-400">Color:</span>
-                    <div className="grid grid-cols-10 gap-1">
-                      {CAL_PALETTE.map(c => (
-                        <button
-                          key={c}
-                          type="button"
-                          onClick={() => setIcalColor(c)}
-                          className="w-4 h-4 rounded-full border border-black/10 dark:border-white/10 transition-transform cursor-pointer"
-                          style={{
-                            backgroundColor: c,
-                            transform: icalColor === c ? 'scale(1.3)' : 'scale(1)',
-                            boxShadow: icalColor === c ? `0 0 0 2px white, 0 0 0 3px ${c}` : undefined
-                          }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                  <select
-                    value={icalVisibility}
-                    onChange={e => setIcalVisibility(e.target.value as 'both' | 'self')}
-                    className="px-2 py-1 bg-white dark:bg-brand-950 border border-slate-250 dark:border-brand-800 rounded-lg text-[10px] font-bold text-slate-700 dark:text-slate-200"
-                  >
-                    <option value="both">Shared (Both)</option>
-                    <option value="self">Private (Me)</option>
-                  </select>
-                </div>
-                <button
-                  type="submit"
-                  disabled={icalStatus.type === 'loading' || !icalUrl}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-550 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
-                >
-                  {icalStatus.type === 'loading' ? 'Syncing...' : 'Add Live iCal Feed'}
-                </button>
-              </div>
-              {icalStatus.message && (
-                <p className={`text-[11px] font-semibold ${icalStatus.type === 'error' ? 'text-rose-500' : 'text-emerald-500'}`}>
-                  {icalStatus.message}
+                <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                  Reconcile cross-account entries and remove duplicate cards across devices.
                 </p>
-              )}
-            </form>
+              </div>
+              <button
+                type="button"
+                onClick={handleDeduplicateEvents}
+                disabled={importStatus.type === 'loading'}
+                className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-650 hover:bg-indigo-550 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50 shrink-0"
+              >
+                <Sparkles size={14} />
+                {importStatus.type === 'loading' ? 'Reconciling...' : 'Clean Duplicate Events'}
+              </button>
+            </div>
+
+            {importStatus.message && (
+              <div className={`text-xs font-semibold py-2 px-3 rounded-xl border ${
+                importStatus.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' :
+                importStatus.type === 'error' ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' :
+                'bg-blue-500/10 border-blue-500/20 text-blue-500 animate-pulse'
+              }`}>
+                {importStatus.message}
+              </div>
+            )}
           </div>
         </div>
       </div>

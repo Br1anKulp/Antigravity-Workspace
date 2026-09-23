@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useCalendarStore } from '../store/calendarStore';
 import type { CalendarEvent } from '../store/calendarStore';
 import { useAuthStore } from '../store/authStore';
-import { safeTokenStorage } from '../utils/storage';
 import { LoadingSkeleton } from '../components/LoadingSkeleton';
 import { 
   parseISO,
@@ -29,10 +28,7 @@ export const CalendarView: React.FC = () => {
     updateEvent,
     deleteEvent,
     getExpandedEvents,
-    showGoogleEvents,
     googleCals,
-    syncGoogleCalsFromEvents,
-    importGoogleEvents,
     showCreateEventModal,
     setShowCreateEventModal
   } = useCalendarStore();
@@ -57,32 +53,41 @@ export const CalendarView: React.FC = () => {
 
   const getFilteredEvents = React.useCallback((startDate: Date, endDate: Date) => {
     const raw = getExpandedEvents(startDate, endDate);
-    return raw.filter(e => {
-      // If it's an imported iCal or Google event
-      if (e.googleEventId) {
-        if (!showGoogleEvents) return false;
-        const match = googleCals.find(c => c.id === e.googleCalendarId || c.color === e.color || (e.googleCalendarName && c.summary === e.googleCalendarName));
-        if (match) {
-          return match.visible;
-        }
-        // If the calendar feed was deleted or not in active feeds, do not show it if there are configured feeds
-        return false;
-      }
-      
-      // Native Slate event filtering based on assignee/creator
-      const brianCal = googleCals.find(c => c.id === 'brian-slate');
-      const chelseaCal = googleCals.find(c => c.id === 'chelsea-slate');
 
-      // Check assignee / creator
+    // Slate member filter toggles (Brian / Chelsea)
+    const brianCal = googleCals.find(c => c.id === 'brian-slate');
+    const chelseaCal = googleCals.find(c => c.id === 'chelsea-slate');
+
+    const filtered = raw.filter(e => {
       const isBrian = e.assignee === 'self' || e.creatorName?.toLowerCase().includes('brian');
       const isChelsea = e.assignee === 'partner' || e.creatorName?.toLowerCase().includes('chelsea');
+      const isBoth = e.assignee === 'both';
 
-      if (isBrian && brianCal && !brianCal.visible) return false;
-      if (isChelsea && chelseaCal && !chelseaCal.visible) return false;
+      if (!isBoth) {
+        if (isBrian && brianCal && !brianCal.visible) return false;
+        if (isChelsea && chelseaCal && !chelseaCal.visible) return false;
+      }
 
       return true;
     });
-  }, [getExpandedEvents, showGoogleEvents, googleCals]);
+
+    // In-memory deduplication: collapse identical duplicate events across partner logins
+    const seen = new Set<string>();
+    const deduplicated: CalendarEvent[] = [];
+
+    for (const e of filtered) {
+      const normTitle = (e.title || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const startTime = e.start ? e.start.slice(0, 16) : '';
+      const key = `${normTitle}_${startTime}_${e.allDay ? 'allDay' : 'timed'}`;
+
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduplicated.push(e);
+      }
+    }
+
+    return deduplicated;
+  }, [getExpandedEvents, googleCals]);
 
   const isEventOnDay = React.useCallback((event: CalendarEvent, day: Date) => {
     const start = parseISO(event.start);
@@ -124,12 +129,6 @@ export const CalendarView: React.FC = () => {
     setShowAddModal(true);
   }, [setSelectedEvent, setShowAddModal]);
 
-  // Sync googleCals list with actual event colors present in the store
-  useEffect(() => {
-    const googleEvents = events.filter(e => !!e.googleEventId);
-    syncGoogleCalsFromEvents(googleEvents);
-  }, [events, syncGoogleCalsFromEvents]);
-
   // Auto-detect mobile width to default to Month view
   useEffect(() => {
     if (window.innerWidth < 768) {
@@ -165,40 +164,6 @@ export const CalendarView: React.FC = () => {
       }
     }
   }, [events, openEditModal]);
-
-  // Silent Background Auto-Sync
-  useEffect(() => {
-    const token = safeTokenStorage.getToken(user?.uid);
-    const expiry = localStorage.getItem('slate_google_token_expiry');
-    const lastSync = localStorage.getItem('slate_last_google_sync');
-    const savedCals = localStorage.getItem('slate_google_cals');
-
-    if (token && expiry && savedCals) {
-      const isExpired = Date.now() > Number(expiry);
-      const isOverdue = !lastSync || (Date.now() - Number(lastSync) > 60 * 60 * 1000);
-
-      if (!isExpired && isOverdue) {
-        try {
-          const parsed = JSON.parse(savedCals) as { id: string; selected?: boolean; visibility?: string; color: string }[];
-          const targets = parsed.filter((c) => c.selected);
-          if (targets.length > 0) {
-            importGoogleEvents(token, targets.map((t) => ({
-              id: t.id,
-              visibility: (t.visibility || 'self') as 'both' | 'self',
-              color: t.color
-            }))).then(() => {
-              localStorage.setItem('slate_last_google_sync', Date.now().toString());
-              console.log("Background silent Google Calendar sync completed.");
-            }).catch((err) => {
-              console.warn("Background silent Google Calendar sync failed:", err);
-            });
-          }
-        } catch (e) {
-          console.warn("Failed to parse saved calendar settings for background sync:", e);
-        }
-      }
-    }
-  }, [importGoogleEvents, user?.uid]);
 
 
 

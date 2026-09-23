@@ -68,9 +68,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
   const { user, signOut, theme, toggleTheme, updateProfile } = useAuthStore();
   const { notifications, unreadCount, markAsRead, markAllAsRead, requestPermission, deleteNotification } = useNotificationStore();
   const { 
-    showGoogleEvents, 
     googleCals, 
-    setShowGoogleEvents, 
     toggleCalendarVisibility, 
     updateCalendarColor, 
     activeView, 
@@ -317,8 +315,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
             {/* Stepper Controls & Add Event Button */}
             {currentTab === 'calendar' && (
               <div className="flex items-center gap-1 shrink-0 ml-auto sm:ml-1">
-                {/* Stepper Arrows (Hidden on mobile) */}
-                <div className="hidden md:flex items-center border border-slate-200 dark:border-brand-800 rounded-xl overflow-hidden shadow-2xs bg-slate-50/50 dark:bg-brand-950">
+                {/* Stepper Arrows */}
+                <div className="flex items-center border border-slate-200 dark:border-brand-800 rounded-xl overflow-hidden shadow-2xs bg-slate-50/50 dark:bg-brand-950">
                   <button 
                     onClick={() => {
                       if (activeView === 'Day') setSelectedDate(subDays(selectedDate, 1));
@@ -361,7 +359,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
               <div className="absolute top-12 left-0 z-50 w-64 bg-white dark:bg-brand-900 border border-slate-200 dark:border-brand-800 rounded-2xl p-4 shadow-xl space-y-3 animate-in fade-in duration-150">
                 <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-brand-850">
                   <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100">
-                    Calendar Filters & iCal
+                    Calendar Filters
                   </span>
                   <button 
                     onClick={() => setShowFilterMenu(false)}
@@ -404,20 +402,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
                     </div>
                   </div>
 
-                  <label className="flex items-center justify-between cursor-pointer text-xs font-bold text-slate-700 dark:text-slate-300 py-1 border-t border-slate-100 dark:border-brand-850 pt-2">
-                    <span>Google & iCal Integration</span>
-                    <input
-                      type="checkbox"
-                      checked={showGoogleEvents}
-                      onChange={(e) => setShowGoogleEvents(e.target.checked)}
-                      className="rounded border-slate-300 dark:border-brand-800 text-indigo-600 w-4 h-4 cursor-pointer"
-                    />
-                  </label>
-
-                  {showGoogleEvents && googleCals.length > 0 && (
-                    <div className="space-y-1.5 pt-1">
+                  {googleCals.length > 0 && (
+                    <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-brand-850">
                       <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                        Active Feeds
+                        Calendars & Visibility
                       </span>
                       {googleCals.map(cal => (
                         <div key={cal.id} className="flex items-center justify-between text-xs font-semibold py-1 px-1 rounded-lg hover:bg-slate-50 dark:hover:bg-brand-850/50">

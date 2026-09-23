@@ -194,7 +194,7 @@ const CalendarGridComponent = ({
               });
 
               return (
-                <div key={weekIdx} className="relative min-h-[100px] sm:min-h-[120px] md:min-h-[140px] flex-1 flex flex-col">
+                <div key={weekIdx} className="relative min-h-[64px] sm:min-h-[100px] md:min-h-[140px] flex-1 flex flex-col">
                   {/* Background grid */}
                   <div className="absolute inset-0 grid grid-cols-7">
                     {week.map((day) => {
@@ -215,7 +215,7 @@ const CalendarGridComponent = ({
                               onEventDrop(eventId, day);
                             }
                           }}
-                          className={`flex p-1 sm:p-1.5 md:p-2.5 min-h-[100px] sm:min-h-[120px] md:min-h-[140px] hover:bg-slate-50/50 dark:hover:bg-brand-850/10 cursor-pointer flex-col transition-colors ${
+                          className={`flex p-1 sm:p-1.5 md:p-2.5 min-h-[64px] sm:min-h-[100px] md:min-h-[140px] hover:bg-slate-50/50 dark:hover:bg-brand-850/10 cursor-pointer flex-col transition-colors ${
                             !isCurrentMonth ? 'bg-slate-50/20 dark:bg-brand-950/5 text-slate-400 dark:text-slate-600 opacity-60' : 'bg-white dark:bg-brand-900'
                           } ${isToday(day) ? 'bg-indigo-50/20 dark:bg-indigo-950/10' : ''} ${
                             isSameDay(day, selectedDate)
@@ -223,7 +223,7 @@ const CalendarGridComponent = ({
                               : ''
                           }`}
                         >
-                          <div className="flex justify-start mb-1 sm:mb-1.5">
+                          <div className="flex justify-start mb-0.5 sm:mb-1.5">
                             <span className={`text-[9px] sm:text-[10px] md:text-[11px] font-black rounded-full w-4.5 h-4.5 sm:w-5 sm:h-5 md:w-6 md:h-6 flex items-center justify-center transition-all ${
                               isToday(day) 
                                 ? 'bg-indigo-650 text-white shadow-sm font-extrabold scale-105' 
@@ -240,7 +240,7 @@ const CalendarGridComponent = ({
                   </div>
 
                   {/* Foreground Events grid overlay */}
-                  <div className="grid absolute inset-0 pt-5.5 sm:pt-7 md:pt-9 pb-1 gap-y-0.5 md:gap-y-1 px-0.5 md:px-1.5 pointer-events-none grid-cols-7 w-full h-full">
+                  <div className="grid absolute inset-0 pt-5 sm:pt-7 md:pt-9 pb-1 gap-y-0.5 md:gap-y-1 px-0.5 md:px-1.5 pointer-events-none grid-cols-7 w-full h-full">
                     {sortedWeekEvents.map(e => {
                       const trackIdx = eventToTrack.get(e.id + '_' + e.start);
                       if (trackIdx === undefined || trackIdx >= 3) return null;

@@ -110,42 +110,6 @@ function App() {
     updateActiveTime();
     const presenceInterval = setInterval(updateActiveTime, 45000);
 
-    // Background auto-sync for live iCal (.ics) feeds
-    let lastIcalSyncTime = 0;
-    const syncAllIcalFeeds = async (force = false) => {
-      const now = Date.now();
-      // Throttle: don't sync more often than once every 3 minutes unless forced
-      if (!force && now - lastIcalSyncTime < 3 * 60 * 1000) return;
-      lastIcalSyncTime = now;
-
-      const saved = localStorage.getItem('slate_google_cals');
-      if (!saved) return;
-      try {
-        const parsed = JSON.parse(saved);
-        const icalFeeds = parsed.filter((c: { selected?: boolean; id?: string; summary?: string; color?: string; visibility?: 'self' | 'both' }) => c.selected && c.id && (c.id.startsWith('http') || c.id.includes('.ics')));
-        if (icalFeeds.length === 0) return;
-
-        await Promise.all(
-          icalFeeds.map((feed: { id: string; summary?: string; color?: string; visibility?: 'self' | 'both' }) =>
-            useCalendarStore.getState().syncIcalFeed(feed.id, feed.summary || 'Live iCal', feed.color || '#4f46e5', feed.visibility || 'both').catch(console.error)
-          )
-        );
-      } catch (e) {
-        console.warn('iCal auto-sync check error:', e);
-      }
-    };
-
-    // Initial background sync
-    syncAllIcalFeeds(true);
-    const icalInterval = setInterval(() => syncAllIcalFeeds(false), 5 * 60 * 1000); // 5 minute auto-sync interval
-
-    // Also sync iCal feeds throttled when tab regains focus/visibility
-    const syncOnVisibility = () => {
-      if (document.visibilityState === 'visible') syncAllIcalFeeds(false);
-    };
-    window.addEventListener('visibilitychange', syncOnVisibility);
-    window.addEventListener('focus', syncOnVisibility);
-
     // Update presence on visibility or focus changes
     window.addEventListener('visibilitychange', updateActiveTime);
     window.addEventListener('focus', updateActiveTime);
@@ -161,9 +125,6 @@ function App() {
 
     return () => {
       clearInterval(presenceInterval);
-      clearInterval(icalInterval);
-      window.removeEventListener('visibilitychange', syncOnVisibility);
-      window.removeEventListener('focus', syncOnVisibility);
       window.removeEventListener('visibilitychange', updateActiveTime);
       window.removeEventListener('focus', updateActiveTime);
       unsubNotifications();

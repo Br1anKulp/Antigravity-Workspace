@@ -3,8 +3,6 @@ import { dbService } from '../firebase/db';
 import { addDays, addWeeks, addMonths, parseISO } from 'date-fns';
 import { useAuthStore } from './authStore';
 import { useNotificationStore } from './notificationStore';
-import { parseIcalData } from '../utils/icalParser';
-
 export interface CalendarEvent {
   id: string;
   title: string;
@@ -61,6 +59,7 @@ interface CalendarState {
   clearGoogleCalendarEvents: (calendarId: string, color?: string, calendarName?: string) => Promise<void>;
   updateCalendarColor: (calendarId: string, newColor: string) => Promise<void>;
   removeCalendarFeed: (calendarId: string, summary?: string, color?: string) => Promise<void>;
+  deduplicateEvents: () => Promise<{ deletedCount: number }>;
   deduplicateGoogleEvents: () => Promise<void>;
 }
 
@@ -90,8 +89,6 @@ const persistCalendarConfigs = (cals: Array<{ id: string; summary: string; color
     authStore.updateProfile({ calendarConfigs: mapped });
   }
 };
-
-const activeIcalSyncs = new Set<string>();
 
 export const useCalendarStore = create<CalendarState>((set, get) => {
   const getInitialGoogleCals = () => {
@@ -388,348 +385,13 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
     return expanded;
   },
 
-  importGoogleEvents: async (accessToken, calendarConfigs) => {
-    const authStore = useAuthStore.getState();
-    const user = authStore.user;
-    if (!user) throw new Error('Unauthenticated');
-
-    const now = new Date();
-    let imported = 0;
-    let skipped = 0;
-
-    const existingEvents = get().events;
-    const palette = ['#f59e0b', '#10b981', '#8b5cf6', '#ef4444', '#3b82f6', '#ec4899', '#64748b'];
-
-    for (let i = 0; i < calendarConfigs.length; i++) {
-      const config = calendarConfigs[i];
-      const calColor = config.color || palette[i % palette.length];
-      let calName = config.summary || (config.id === 'primary' ? 'Primary Calendar' : config.id === 'work-cal' ? 'Work Projects' : config.id === 'family-cal' ? 'Family Brunch' : config.id);
-      let googleEvents = [];
-
-      try {
-        if (accessToken === 'mock-google-token-xyz123') {
-          if (config.id === 'primary') {
-            googleEvents = [
-              {
-                id: 'google-mock-1',
-                summary: '✈️ Anniversary Trip Planning',
-                description: 'Discuss flights and hotel booking options.',
-                start: { dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2, 14, 0).toISOString() },
-                end: { dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2, 15, 30).toISOString() }
-              },
-              {
-                id: 'google-mock-2',
-                summary: '🍣 Romantic Dinner Date',
-                description: 'Reservation at Sushi House.',
-                start: { dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 4, 19, 0).toISOString() },
-                end: { dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 4, 21, 0).toISOString() }
-              }
-            ];
-          } else if (config.id === 'work-cal') {
-            googleEvents = [
-              {
-                id: 'google-mock-work-1',
-                summary: '💻 React & Vite Dev Sync',
-                description: 'Discuss Slate project frontend refinements.',
-                start: { dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 10, 0).toISOString() },
-                end: { dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 11, 0).toISOString() }
-              }
-            ];
-          } else if (config.id === 'family-cal') {
-            googleEvents = [
-              {
-                id: 'google-mock-fam-1',
-                summary: '🥞 Sunday Family Brunch',
-                description: 'Gathering at grandma\'s house.',
-                start: { dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 5, 11, 0).toISOString() },
-                end: { dateTime: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 5, 13, 0).toISOString() }
-              }
-            ];
-          }
-        } else {
-          // Query window: from 1 month ago to 2 months in the future
-          const timeMin = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString();
-          const timeMax = new Date(now.getFullYear(), now.getMonth() + 2, now.getDate()).toISOString();
-
-          const response = await fetch(
-            `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
-              config.id
-            )}/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(
-              timeMax
-            )}&singleEvents=true&maxResults=250`,
-            {
-              headers: {
-                Authorization: `Bearer ${accessToken}`
-              }
-            }
-          );
-
-          if (!response.ok) {
-            const errBody = await response.text();
-            throw new Error(`Failed to fetch calendar ${config.id}: ${response.statusText} - ${errBody}`);
-          }
-
-          const data = await response.json();
-          googleEvents = data.items || [];
-          if (data.summary && (!config.summary || config.summary === config.id)) {
-            calName = data.summary;
-          }
-        }
-
-        const activeGoogleEventIds = new Set<string>();
-
-        for (const item of googleEvents) {
-          activeGoogleEventIds.add(item.id);
-          const startStr = item.start.dateTime || item.start.date;
-          const endStr = item.end.dateTime || item.end.date;
-          if (!startStr || !endStr) continue;
-
-          const isAllDayEvent = !item.start.dateTime;
-          let startDate: Date;
-          let endDate: Date;
-
-          if (isAllDayEvent) {
-            startDate = new Date(`${item.start.date}T00:00:00`);
-            endDate = new Date(new Date(`${item.end.date}T00:00:00`).getTime() - 1000);
-          } else {
-            startDate = new Date(startStr);
-            endDate = new Date(endStr);
-          }
-
-          if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) continue;
-
-          const startISO = startDate.toISOString();
-          const endISO = endDate.toISOString();
-          const duration = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60));
-          const titleText = item.summary || 'Untitled Google Event';
-          const notesText = item.description || 'Imported from Google Calendar';
-
-          // Check if event already exists by googleEventId
-          const existingEvent = existingEvents.find(e => e.googleEventId === item.id);
-
-          if (existingEvent) {
-            // Check if updates are needed
-            const startChanged = existingEvent.start !== startISO;
-            const endChanged = existingEvent.end !== endISO;
-            const titleChanged = existingEvent.title !== titleText;
-            const notesChanged = (existingEvent.notes || '') !== notesText;
-            const nameChanged = existingEvent.googleCalendarName !== calName;
-
-            if (startChanged || endChanged || titleChanged || notesChanged || nameChanged) {
-              await dbService.set('events', existingEvent.id, {
-                ...existingEvent,
-                title: titleText,
-                start: startISO,
-                end: endISO,
-                duration,
-                allDay: isAllDayEvent,
-                notes: notesText,
-                googleCalendarName: calName
-              });
-              imported++;
-            } else {
-              skipped++;
-            }
-          } else {
-            // Check if there is an existing event matching by title and time to associate
-            const overlapEvent = existingEvents.find(e => e.title === titleText && e.start === startISO);
-            if (overlapEvent) {
-              await dbService.set('events', overlapEvent.id, {
-                ...overlapEvent,
-                googleEventId: item.id,
-                googleCalendarId: config.id,
-                googleCalendarName: calName
-              });
-              skipped++;
-            } else {
-              // Add new event
-              const newEvent = {
-                title: titleText,
-                start: startISO,
-                end: endISO,
-                duration,
-                allDay: isAllDayEvent,
-                color: calColor,
-                notes: notesText,
-                assignee: config.visibility,
-                googleEventId: item.id,
-                googleCalendarId: config.id,
-                googleCalendarName: calName,
-                creatorId: user.uid,
-                creatorName: user.name
-              };
-              await dbService.add('events', newEvent);
-              imported++;
-            }
-          }
-        }
-
-        // Deletion handling: Remove events in Slate that were deleted from Google Calendar
-        const staleEvents = existingEvents.filter(
-          e => e.googleCalendarId === config.id && e.creatorId === user.uid && e.googleEventId && !activeGoogleEventIds.has(e.googleEventId)
-        );
-        for (const se of staleEvents) {
-          await dbService.delete('events', se.id);
-        }
-
-      } catch (err) {
-        console.error(`Error importing events for calendar ${config.id}:`, err);
-      }
-    }
-
-    await get().deduplicateGoogleEvents();
-    return { imported, skipped };
+  // Legacy external stubs maintained for backwards compatibility
+  importGoogleEvents: async () => {
+    return { imported: 0, skipped: 0 };
   },
 
-  syncIcalFeed: async (feedUrl, feedName, color, visibility) => {
-    const authStore = useAuthStore.getState();
-    const user = authStore.user;
-    if (!user) throw new Error('Unauthenticated');
-
-    if (activeIcalSyncs.has(feedUrl)) {
-      return { imported: 0 };
-    }
-    activeIcalSyncs.add(feedUrl);
-
-    try {
-      let targetUrl = feedUrl.trim();
-      if (targetUrl.startsWith('webcal://')) {
-        targetUrl = 'https://' + targetUrl.slice(9);
-      }
-      targetUrl = targetUrl.replace(/%40/gi, '@');
-
-    let icalText = '';
-    let success = false;
-    let lastErrReason = '';
-
-    // Step 1: Cloud Function fetcher (Server-to-server, bypasses browser CORS)
-    try {
-      const cfUrl = `https://us-central1-kulpslate.cloudfunctions.net/fetchIcal?url=${encodeURIComponent(targetUrl)}`;
-      const cfResp = await fetch(cfUrl);
-      if (cfResp.ok) {
-        const text = await cfResp.text();
-        if (text && text.includes('BEGIN:VCALENDAR')) {
-          icalText = text;
-          success = true;
-        } else {
-          lastErrReason = 'Response did not contain valid VCALENDAR data';
-        }
-      } else {
-        const errBody = await cfResp.text();
-        lastErrReason = `HTTP ${cfResp.status}: ${errBody}`;
-      }
-    } catch (err) {
-      lastErrReason = err instanceof Error ? err.message : String(err);
-    }
-
-    // Step 2: Direct client fetch
-    if (!success) {
-      try {
-        const resp = await fetch(targetUrl);
-        if (resp.ok) {
-          const text = await resp.text();
-          if (text && text.includes('BEGIN:VCALENDAR')) {
-            icalText = text;
-            success = true;
-          }
-        }
-      } catch {
-        // Direct fetch blocked by CORS
-      }
-    }
-
-    // Step 3: Fallback CORS proxies
-    if (!success) {
-      const fallbackProxies = [
-        (url: string) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-        (url: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-        (url: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
-      ];
-
-      for (const getProxyUrl of fallbackProxies) {
-        try {
-          const pUrl = getProxyUrl(targetUrl);
-          const pResp = await fetch(pUrl);
-          if (pResp.ok) {
-            const text = await pResp.text();
-            if (text && text.includes('BEGIN:VCALENDAR')) {
-              icalText = text;
-              success = true;
-              break;
-            }
-          }
-        } catch {
-          // Continue to next proxy
-        }
-      }
-    }
-
-    if (!success || !icalText || !icalText.includes('BEGIN:VCALENDAR')) {
-      throw new Error(`Could not fetch iCal feed (${lastErrReason || 'Verification failed'}).`);
-    }
-
-    const parsedEvents = parseIcalData(icalText);
-    const existingEvents = get().events;
-    let imported = 0;
-
-    const writeTasks: Array<() => Promise<void>> = [];
-
-    for (const item of parsedEvents) {
-      const startISO = item.start.toISOString();
-      const endISO = item.end.toISOString();
-      const duration = Math.round((item.end.getTime() - item.start.getTime()) / (1000 * 60));
-      const existing = existingEvents.find(e => e.googleEventId === item.uid);
-
-      if (!existing) {
-        const newEvt = {
-          title: item.summary || 'Untitled Event',
-          start: startISO,
-          end: endISO,
-          duration: duration > 0 ? duration : 60,
-          allDay: item.allDay,
-          color: color || '#4f46e5',
-          notes: item.description || `Live iCal feed: ${feedName}`,
-          assignee: visibility || 'both',
-          googleEventId: item.uid,
-          googleCalendarId: feedUrl,
-          googleCalendarName: feedName,
-          creatorId: user.uid,
-          creatorName: user.name
-        };
-        writeTasks.push(async () => {
-          await dbService.add('events', newEvt);
-        });
-        imported++;
-      } else {
-        if (existing.title !== item.summary || existing.start !== startISO || existing.end !== endISO) {
-          writeTasks.push(async () => {
-            await dbService.set('events', existing.id, {
-              ...existing,
-              title: item.summary,
-              start: startISO,
-              end: endISO,
-              duration: duration > 0 ? duration : 60,
-              allDay: item.allDay
-            });
-          });
-          imported++;
-        }
-      }
-    }
-
-    const CHUNK_SIZE = 25;
-    for (let i = 0; i < writeTasks.length; i += CHUNK_SIZE) {
-      const chunk = writeTasks.slice(i, i + CHUNK_SIZE);
-      await Promise.all(chunk.map(fn => fn().catch(err => console.error('iCal event write error:', err))));
-    }
-
-    if (imported > 0) {
-      await get().deduplicateGoogleEvents();
-    }
-    return { imported };
-    } finally {
-      activeIcalSyncs.delete(feedUrl);
-    }
+  syncIcalFeed: async () => {
+    return { imported: 0 };
   },
 
   clearGoogleEvents: async () => {
@@ -737,10 +399,10 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
     const user = authStore.user;
     if (!user) return;
 
-    const googleEvents = get().events.filter(e => !!e.googleEventId && e.creatorId === user.uid);
+    const legacyEvents = get().events.filter(e => !!e.googleEventId && e.creatorId === user.uid);
     const CHUNK_SIZE = 25;
-    for (let i = 0; i < googleEvents.length; i += CHUNK_SIZE) {
-      const chunk = googleEvents.slice(i, i + CHUNK_SIZE);
+    for (let i = 0; i < legacyEvents.length; i += CHUNK_SIZE) {
+      const chunk = legacyEvents.slice(i, i + CHUNK_SIZE);
       await Promise.all(chunk.map(e => dbService.delete('events', e.id).catch(() => {})));
     }
   },
@@ -749,68 +411,103 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
     const targetId = calendarId ? calendarId.trim().toLowerCase() : '';
     const targetName = calendarName ? calendarName.trim().toLowerCase() : '';
 
-    const googleEvents = get().events.filter(e => {
-      if (!e.googleEventId) return false;
+    const matchedEvents = get().events.filter(e => {
       const eCalId = (e.googleCalendarId || '').trim().toLowerCase();
       const eCalName = (e.googleCalendarName || '').trim().toLowerCase();
       const eNotes = (e.notes || '').toLowerCase();
 
-      // Check match by ID / URL
-      if (targetId && (eCalId === targetId || eCalId.includes(targetId) || targetId.includes(eCalId))) {
-        return true;
-      }
-      // Check match by name (e.g. "MVBC")
-      if (targetName && (eCalName === targetName || eCalName.includes(targetName) || eNotes.includes(targetName))) {
-        return true;
-      }
-      // If targetId itself looks like a calendar name (e.g. "MVBC")
-      if (targetId && (eCalName === targetId || eCalName.includes(targetId) || eNotes.includes(targetId))) {
-        return true;
-      }
-      // Check match by exact color if specified
-      if (color && e.color === color) {
-        return true;
-      }
+      if (targetId && (eCalId === targetId || eCalId.includes(targetId) || targetId.includes(eCalId))) return true;
+      if (targetName && (eCalName === targetName || eCalName.includes(targetName) || eNotes.includes(targetName))) return true;
+      if (color && e.color === color) return true;
       return false;
     });
 
-    // Optimistically update local store events immediately
-    const matchedIds = new Set(googleEvents.map(e => e.id));
+    const matchedIds = new Set(matchedEvents.map(e => e.id));
     set(state => ({
       events: state.events.filter(e => !matchedIds.has(e.id))
     }));
 
     const CHUNK_SIZE = 25;
-    for (let i = 0; i < googleEvents.length; i += CHUNK_SIZE) {
-      const chunk = googleEvents.slice(i, i + CHUNK_SIZE);
+    for (let i = 0; i < matchedEvents.length; i += CHUNK_SIZE) {
+      const chunk = matchedEvents.slice(i, i + CHUNK_SIZE);
       await Promise.all(chunk.map(e => dbService.delete('events', e.id).catch(() => {})));
     }
   },
 
-  deduplicateGoogleEvents: async () => {
+  deduplicateEvents: async () => {
     const { events } = get();
     const uniqueEvents = new Map<string, CalendarEvent>();
     const toDelete: string[] = [];
+    const toUpdate: CalendarEvent[] = [];
 
+    // Prioritize keeping shared events ('both') or events with longer notes
     const sorted = [...events].sort((a, b) => {
-      if (a.googleEventId && !b.googleEventId) return -1;
-      if (!a.googleEventId && b.googleEventId) return 1;
-      return 0;
+      if (a.assignee === 'both' && b.assignee !== 'both') return -1;
+      if (a.assignee !== 'both' && b.assignee === 'both') return 1;
+      return (b.notes?.length || 0) - (a.notes?.length || 0);
     });
 
     sorted.forEach(e => {
-      const key = e.googleEventId ? `${e.googleEventId}_${e.start}` : `${e.title}_${e.start}`;
+      const normTitle = (e.title || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const startDate = new Date(e.start);
+      const startKey = isNaN(startDate.getTime())
+        ? (e.start || '').slice(0, 16)
+        : e.allDay
+        ? (e.start || '').slice(0, 10)
+        : Math.floor(startDate.getTime() / 60000).toString();
+
+      const key = `${normTitle}_${startKey}_${e.allDay ? 'allDay' : 'time'}`;
+
       if (uniqueEvents.has(key)) {
+        const kept = uniqueEvents.get(key)!;
         toDelete.push(e.id);
+
+        let modified = false;
+        // If duplicate has shared visibility, upgrade kept event to shared
+        if (e.assignee === 'both' && kept.assignee !== 'both') {
+          kept.assignee = 'both';
+          modified = true;
+        }
+        // If kept event is missing notes but duplicate has notes, copy notes
+        if (!kept.notes && e.notes) {
+          kept.notes = e.notes;
+          modified = true;
+        }
+        if (modified && !toUpdate.some(u => u.id === kept.id)) {
+          toUpdate.push(kept);
+        }
       } else {
-        uniqueEvents.set(key, e);
+        uniqueEvents.set(key, { ...e });
       }
     });
 
+    // 1. Instantly update in-memory state
+    const deleteSet = new Set(toDelete);
+    set(state => ({
+      events: state.events
+        .filter(e => !deleteSet.has(e.id))
+        .map(e => {
+          const updated = toUpdate.find(u => u.id === e.id);
+          return updated || e;
+        })
+    }));
+
+    // 2. Perform batched updates to Firestore
+    for (const item of toUpdate) {
+      await dbService.set('events', item.id, item).catch(err => console.error("Failed to update merged event:", item.id, err));
+    }
+
+    // 3. Perform batched deletes from Firestore
     const CHUNK_SIZE = 25;
     for (let i = 0; i < toDelete.length; i += CHUNK_SIZE) {
       const chunk = toDelete.slice(i, i + CHUNK_SIZE);
       await Promise.all(chunk.map(id => dbService.delete('events', id).catch(err => console.error("Failed to delete duplicate event:", id, err))));
     }
+
+    return { deletedCount: toDelete.length };
+  },
+
+  deduplicateGoogleEvents: async () => {
+    await get().deduplicateEvents();
   }
 }});
