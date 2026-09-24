@@ -47,6 +47,29 @@ const CalendarGridComponent = ({
   const theme = useAuthStore(state => state.theme);
   const isDarkMode = theme === 'dark';
 
+  const [now, setNow] = React.useState(new Date());
+  const [hoveredEvent, setHoveredEvent] = React.useState<{ event: CalendarEvent; rect: DOMRect } | null>(null);
+  const hoverTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  React.useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleMouseEnter = (event: CalendarEvent, target: HTMLElement) => {
+    if (window.innerWidth < 768) return;
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    hoverTimeoutRef.current = setTimeout(() => {
+      const rect = target.getBoundingClientRect();
+      setHoveredEvent({ event, rect });
+    }, 200);
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+    setHoveredEvent(null);
+  };
+
   const getEventColors = (baseColor: string) => {
     let hex = baseColor.replace('#', '');
     if (hex.length === 3) {
@@ -56,18 +79,11 @@ const CalendarGridComponent = ({
     const g = parseInt(hex.substring(2, 4), 16) || 0;
     const b = parseInt(hex.substring(4, 6), 16) || 0;
 
-    // Calculate relative luminance (WCAG formula) to pick white or black text
-    const toLinear = (c: number) => {
-      const n = c / 255;
-      return n <= 0.03928 ? n / 12.92 : Math.pow((n + 0.055) / 1.055, 2.4);
-    };
-    const luminance = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
-    const textColor = luminance > 0.35 ? '#000000' : '#ffffff';
-
     return {
-      bg: baseColor,
+      bg: isDarkMode ? `rgba(${r}, ${g}, ${b}, 0.24)` : `rgba(${r}, ${g}, ${b}, 0.14)`,
       border: baseColor,
-      text: textColor
+      text: isDarkMode ? '#f8fafc' : '#0f172a',
+      accent: baseColor
     };
   };
 
@@ -223,7 +239,7 @@ const CalendarGridComponent = ({
                               : ''
                           }`}
                         >
-                          <div className="flex justify-start mb-1 sm:mb-1.5">
+                          <div className="flex items-center justify-between mb-1 sm:mb-1.5">
                             <span className={`text-[10px] sm:text-[10px] md:text-[11px] font-black rounded-full w-5 h-5 sm:w-5 sm:h-5 md:w-6 md:h-6 flex items-center justify-center transition-all ${
                               isToday(day) 
                                 ? 'bg-indigo-650 text-white shadow-sm font-extrabold scale-105' 
@@ -233,6 +249,25 @@ const CalendarGridComponent = ({
                             }`}>
                               {format(day, 'd')}
                             </span>
+                            {/* Feature 1.C: Density Indicator Dots */}
+                            {(() => {
+                              const dayAllEvents = weekEvents.filter(e => isEventOnDay(e, day));
+                              if (dayAllEvents.length === 0) return null;
+                              return (
+                                <div className="flex items-center gap-0.5 pr-0.5">
+                                  {dayAllEvents.slice(0, 3).map((ev, i) => (
+                                    <span 
+                                      key={i} 
+                                      className="w-1.5 h-1.5 rounded-full shrink-0 shadow-2xs" 
+                                      style={{ backgroundColor: ev.color || '#6366f1' }} 
+                                    />
+                                  ))}
+                                  {dayAllEvents.length > 3 && (
+                                    <span className="w-1 h-1 rounded-full bg-slate-400 dark:bg-slate-500 shrink-0" />
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       );
@@ -250,6 +285,16 @@ const CalendarGridComponent = ({
                       const startIdx = eventDays[0].idx;
                       const endIdx = eventDays[eventDays.length - 1].idx;
 
+                      const isSegmentStart = isSameDay(parseISO(e.start), week[startIdx]) || parseISO(e.start) >= week[startIdx];
+                      const isSegmentEnd = isSameDay(parseISO(e.end), week[endIdx]) || parseISO(e.end) <= week[endIdx];
+                      const roundingClass = isSegmentStart && isSegmentEnd
+                        ? 'rounded-md'
+                        : isSegmentStart
+                        ? 'rounded-l-md rounded-r-none'
+                        : isSegmentEnd
+                        ? 'rounded-r-md rounded-l-none'
+                        : 'rounded-none';
+
                       return (
                         <div
                           key={e.id + '_' + e.start + '-' + weekIdx}
@@ -258,19 +303,22 @@ const CalendarGridComponent = ({
                             setSelectedDate(week[startIdx]);
                             openEditModal(e);
                           }}
+                          onMouseEnter={(evt) => handleMouseEnter(e, evt.currentTarget)}
+                          onMouseLeave={handleMouseLeave}
                           draggable
                           onDragStart={(evt) => {
                             evt.stopPropagation();
                             evt.dataTransfer.setData('text/plain', e.id);
                           }}
-                          className={`px-1.5 py-0.5 rounded-md text-[9.5px] sm:text-[10px] font-bold truncate transition-all hover:scale-[0.98] flex items-center justify-between gap-1 shadow-2xs cursor-grab active:cursor-grabbing hover:brightness-95 duration-150 pointer-events-auto h-4.5 sm:h-5 leading-none ${isEventPassed(e) ? 'opacity-40' : ''}`}
+                          className={`px-1.5 py-0.5 ${roundingClass} text-[9.5px] sm:text-[10px] font-bold truncate transition-all hover:scale-[0.98] flex items-center justify-between gap-1 shadow-2xs cursor-grab active:cursor-grabbing hover:brightness-95 duration-150 pointer-events-auto h-4.5 sm:h-5 leading-none ${isEventPassed(e) ? 'opacity-40' : ''}`}
                           style={{ 
                             gridColumnStart: startIdx + 1,
                             gridColumnEnd: endIdx + 2,
                             gridRowStart: trackIdx + 1,
                             gridRowEnd: trackIdx + 2,
                             backgroundColor: getEventColors(e.color).bg,
-                            color: getEventColors(e.color).text
+                            color: getEventColors(e.color).text,
+                            borderLeft: isSegmentStart ? `3.5px solid ${e.color}` : 'none'
                           }}
                           title={e.title}
                         >
@@ -449,7 +497,7 @@ const CalendarGridComponent = ({
                               : ''
                           }`}
                         >
-                          <div className="flex justify-start mb-1.5">
+                          <div className="flex items-center justify-between mb-1.5">
                             <span className={`text-[10px] md:text-[11px] font-black rounded-full w-5 h-5 md:w-6 md:h-6 flex items-center justify-center transition-all ${
                               isToday(day) 
                                 ? 'bg-indigo-650 text-white shadow-sm font-extrabold scale-105' 
@@ -459,6 +507,25 @@ const CalendarGridComponent = ({
                             }`}>
                               {format(day, 'd')}
                             </span>
+                            {/* Feature 1.C: Density Indicator Dots */}
+                            {(() => {
+                              const dayAllEvents = weekEvents.filter(e => isEventOnDay(e, day));
+                              if (dayAllEvents.length === 0) return null;
+                              return (
+                                <div className="flex items-center gap-0.5 pr-0.5">
+                                  {dayAllEvents.slice(0, 3).map((ev, i) => (
+                                    <span 
+                                      key={i} 
+                                      className="w-1.5 h-1.5 rounded-full shrink-0 shadow-2xs" 
+                                      style={{ backgroundColor: ev.color || '#6366f1' }} 
+                                    />
+                                  ))}
+                                  {dayAllEvents.length > 3 && (
+                                    <span className="w-1 h-1 rounded-full bg-slate-400 dark:bg-slate-500 shrink-0" />
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
                       );
@@ -476,6 +543,16 @@ const CalendarGridComponent = ({
                       const startIdx = eventDays[0].idx;
                       const endIdx = eventDays[eventDays.length - 1].idx;
 
+                      const isSegmentStart = isSameDay(parseISO(e.start), week[startIdx]) || parseISO(e.start) >= week[startIdx];
+                      const isSegmentEnd = isSameDay(parseISO(e.end), week[endIdx]) || parseISO(e.end) <= week[endIdx];
+                      const roundingClass = isSegmentStart && isSegmentEnd
+                        ? 'rounded-md'
+                        : isSegmentStart
+                        ? 'rounded-l-md rounded-r-none'
+                        : isSegmentEnd
+                        ? 'rounded-r-md rounded-l-none'
+                        : 'rounded-none';
+
                       return (
                         <div
                           key={e.id + '_' + e.start + '-' + weekIdx}
@@ -484,19 +561,22 @@ const CalendarGridComponent = ({
                             setSelectedDate(week[startIdx]);
                             openEditModal(e);
                           }}
+                          onMouseEnter={(evt) => handleMouseEnter(e, evt.currentTarget)}
+                          onMouseLeave={handleMouseLeave}
                           draggable
                           onDragStart={(evt) => {
                             evt.stopPropagation();
                             evt.dataTransfer.setData('text/plain', e.id);
                           }}
-                          className={`px-1 md:px-2 py-0.5 md:py-1 rounded-md text-[7px] md:text-[10px] font-black truncate transition-all hover:scale-[0.98] flex items-center justify-between gap-1 shadow-sm cursor-grab active:cursor-grabbing hover:brightness-90 duration-150 pointer-events-auto ${isEventPassed(e) ? 'opacity-40' : ''}`}
+                          className={`px-1 md:px-2 py-0.5 md:py-1 ${roundingClass} text-[7px] md:text-[10px] font-black truncate transition-all hover:scale-[0.98] flex items-center justify-between gap-1 shadow-sm cursor-grab active:cursor-grabbing hover:brightness-90 duration-150 pointer-events-auto ${isEventPassed(e) ? 'opacity-40' : ''}`}
                           style={{ 
                             gridColumnStart: startIdx + 1,
                             gridColumnEnd: endIdx + 2,
                             gridRowStart: trackIdx + 1,
                             gridRowEnd: trackIdx + 2,
                             backgroundColor: getEventColors(e.color).bg,
-                            color: getEventColors(e.color).text
+                            color: getEventColors(e.color).text,
+                            borderLeft: isSegmentStart ? `3.5px solid ${e.color}` : 'none'
                           }}
                           title={e.title}
                         >
@@ -695,6 +775,16 @@ const CalendarGridComponent = ({
               const startIdx = eventDays[0].idx;
               const endIdx = eventDays[eventDays.length - 1].idx;
 
+              const isSegmentStart = isSameDay(parseISO(e.start), days[startIdx]) || parseISO(e.start) >= days[startIdx];
+              const isSegmentEnd = isSameDay(parseISO(e.end), days[endIdx]) || parseISO(e.end) <= days[endIdx];
+              const roundingClass = isSegmentStart && isSegmentEnd
+                ? 'rounded-md'
+                : isSegmentStart
+                ? 'rounded-l-md rounded-r-none'
+                : isSegmentEnd
+                ? 'rounded-r-md rounded-l-none'
+                : 'rounded-none';
+
               return (
                 <div
                   key={e.id + '_' + e.start}
@@ -703,19 +793,22 @@ const CalendarGridComponent = ({
                     setSelectedDate(days[startIdx]);
                     openEditModal(e);
                   }}
+                  onMouseEnter={(evt) => handleMouseEnter(e, evt.currentTarget)}
+                  onMouseLeave={handleMouseLeave}
                   draggable
                   onDragStart={(evt) => {
                     evt.stopPropagation();
                     evt.dataTransfer.setData('text/plain', e.id);
                   }}
-                  className={`px-1.5 py-0 rounded-md text-[9px] sm:text-[10px] font-bold truncate transition-all hover:scale-[0.98] flex items-center justify-between gap-1 shadow-2xs cursor-grab active:cursor-grabbing hover:brightness-95 duration-150 pointer-events-auto h-4 sm:h-5 leading-none ${isEventPassed(e) ? 'opacity-40' : ''}`}
+                  className={`px-1.5 py-0 ${roundingClass} text-[9px] sm:text-[10px] font-bold truncate transition-all hover:scale-[0.98] flex items-center justify-between gap-1 shadow-2xs cursor-grab active:cursor-grabbing hover:brightness-95 duration-150 pointer-events-auto h-4 sm:h-5 leading-none ${isEventPassed(e) ? 'opacity-40' : ''}`}
                   style={{ 
                     gridColumnStart: startIdx + 1,
                     gridColumnEnd: endIdx + 2,
                     gridRowStart: trackIdx + 1,
                     gridRowEnd: trackIdx + 2,
                     backgroundColor: getEventColors(e.color).bg,
-                    color: getEventColors(e.color).text
+                    color: getEventColors(e.color).text,
+                    borderLeft: isSegmentStart ? `3.5px solid ${e.color}` : 'none'
                   }}
                   title={e.title}
                 >
@@ -887,14 +980,17 @@ const CalendarGridComponent = ({
                       evt.stopPropagation();
                       openEditModal(e);
                     }}
+                    onMouseEnter={(evt) => handleMouseEnter(e, evt.currentTarget)}
+                    onMouseLeave={handleMouseLeave}
                     className={`rounded-lg p-1.5 text-[10px] font-bold shadow-sm truncate hover:brightness-90 transition-all text-left cursor-pointer pointer-events-auto ${isEventPassed(e) ? 'opacity-40' : ''}`}
                     style={{
                       gridColumnStart: startIdx + 1,
                       gridColumnEnd: endIdx + 2,
                       gridRowStart: trackIdx + 1,
                       gridRowEnd: trackIdx + 2,
-                      backgroundColor: e.color,
-                      color: getEventColors(e.color).text
+                      backgroundColor: getEventColors(e.color).bg,
+                      color: getEventColors(e.color).text,
+                      borderLeft: `3.5px solid ${e.color}`
                     }}
                     title={e.title}
                   >
@@ -937,6 +1033,17 @@ const CalendarGridComponent = ({
                       onClick={() => openCreateModal(d, timeStr)}
                       className="border-r border-slate-100 dark:border-brand-850 p-1 relative hover:bg-slate-50/40 dark:hover:bg-brand-850/10 transition-colors cursor-pointer group"
                     >
+                      {/* Feature 2.A: Live Current Time Indicator */}
+                      {isToday(d) && now.getHours() === h && (
+                        <div 
+                          className="absolute inset-x-0 z-20 pointer-events-none flex items-center"
+                          style={{ top: `${(now.getMinutes() / 60) * 100}%` }}
+                        >
+                          <div className="w-2.5 h-2.5 -ml-1 rounded-full bg-rose-500 ring-2 ring-white dark:ring-brand-900 shadow-sm animate-pulse" />
+                          <div className="flex-1 h-0.5 bg-rose-500 shadow-xs" />
+                        </div>
+                      )}
+
                       {dayEvents.map(e => (
                         <div
                           key={e.id}
@@ -944,8 +1051,14 @@ const CalendarGridComponent = ({
                             evt.stopPropagation();
                             openEditModal(e);
                           }}
+                          onMouseEnter={(evt) => handleMouseEnter(e, evt.currentTarget)}
+                          onMouseLeave={handleMouseLeave}
                           className={`absolute inset-1 rounded-xl p-1.5 text-xs font-extrabold shadow-sm overflow-hidden flex flex-col justify-between ${isEventPassed(e) ? 'opacity-40' : ''}`}
-                          style={{ backgroundColor: e.color, color: getEventColors(e.color).text }}
+                          style={{ 
+                            backgroundColor: getEventColors(e.color).bg, 
+                            color: getEventColors(e.color).text,
+                            borderLeft: `3.5px solid ${e.color}`
+                          }}
                         >
                           <div className={`truncate leading-tight ${isEventPassed(e) ? 'line-through' : ''}`}>{e.title}</div>
                           <div className="flex items-center gap-1 text-[9px] opacity-90 mt-0.5">
@@ -966,11 +1079,49 @@ const CalendarGridComponent = ({
     );
   };
 
-  if (activeView === 'Month') return renderMonthView();
-  if (activeView === '2-Week') return renderTwoWeekView();
-  if (activeView === 'Day') return renderHourlyView(1);
-  if (activeView === '4-Day') return renderDayBlocksView(7);
-  return null;
+  let viewContent = null;
+  if (activeView === 'Month') viewContent = renderMonthView();
+  else if (activeView === '2-Week') viewContent = renderTwoWeekView();
+  else if (activeView === 'Day') viewContent = renderHourlyView(1);
+  else if (activeView === '4-Day') viewContent = renderDayBlocksView(7);
+
+  return (
+    <>
+      {viewContent}
+
+      {/* Feature 2.C: Desktop Hover Preview Tooltip */}
+      {hoveredEvent && (
+        <div 
+          className="fixed z-50 pointer-events-none bg-white/95 dark:bg-brand-900/95 backdrop-blur-md rounded-2xl shadow-xl border border-slate-200 dark:border-brand-750 p-3 w-64 text-left animate-in fade-in zoom-in-95 duration-100"
+          style={{
+            top: Math.min(window.innerHeight - 200, Math.max(10, hoveredEvent.rect.bottom + 6)),
+            left: Math.min(window.innerWidth - 270, Math.max(10, hoveredEvent.rect.left))
+          }}
+        >
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: hoveredEvent.event.color }} />
+            <span className="font-black text-xs text-slate-850 dark:text-slate-100 truncate">{hoveredEvent.event.title}</span>
+          </div>
+          <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mb-1">
+            <Clock size={12} className="shrink-0 text-slate-400" />
+            <span>
+              {hoveredEvent.event.allDay 
+                ? 'All Day' 
+                : `${format(parseISO(hoveredEvent.event.start), 'p')} (${hoveredEvent.event.duration || 60}m)`}
+            </span>
+          </div>
+          <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 flex items-center gap-1">
+            <span>By: {hoveredEvent.event.assignee === 'both' ? '👥 Both' : hoveredEvent.event.creatorId === user?.uid ? '⚡ Brian' : '🌸 Chelsea'}</span>
+          </div>
+          {hoveredEvent.event.notes && (
+            <div className="mt-2 pt-2 border-t border-slate-100 dark:border-brand-800 text-[11px] text-slate-600 dark:text-slate-350 line-clamp-3">
+              {hoveredEvent.event.notes}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
 };
 
 export const CalendarGrid = React.memo(CalendarGridComponent);

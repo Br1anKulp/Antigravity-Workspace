@@ -30,14 +30,25 @@ export const DayDetailModal: React.FC<DayDetailModalProps> = ({
   const dayEvents = getFilteredEvents(startOfDay(selectedDate), endOfDay(selectedDate));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-3 sm:p-4 animate-in fade-in duration-200">
-      <div className="w-full max-w-2xl bg-white dark:bg-brand-900 border border-slate-200 dark:border-brand-800 rounded-3xl p-4 sm:p-6 shadow-2xl animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh] sm:max-h-[85vh]">
+    <div 
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="w-full sm:max-w-2xl bg-white dark:bg-brand-900 border-t sm:border border-slate-200 dark:border-brand-800 rounded-t-3xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
+        {/* Mobile Drag Handle */}
+        <div 
+          onClick={onClose}
+          className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto mb-3 sm:hidden cursor-pointer active:scale-95 transition-transform" 
+        />
+
         <div className="flex justify-between items-center mb-3 sm:mb-4 border-b border-slate-150 dark:border-brand-850 pb-2.5 sm:pb-3">
           <div>
             <h3 className="text-[10px] font-extrabold text-slate-400 dark:text-slate-550 uppercase tracking-widest">
               Selected Day Overview
             </h3>
-            <h2 className="text-lg font-black text-slate-800 dark:text-slate-100 mt-0.5">
+            <h2 className="text-base sm:text-lg font-black text-slate-800 dark:text-slate-100 mt-0.5">
               {format(selectedDate, 'EEEE, MMMM d, yyyy')}
             </h2>
           </div>
@@ -65,10 +76,10 @@ export const DayDetailModal: React.FC<DayDetailModalProps> = ({
                     onClose();
                     openEditModal(e);
                   }}
-                  className="p-4 bg-slate-50/50 dark:bg-brand-950/25 border border-slate-150 dark:border-brand-850 rounded-2xl hover:border-slate-350 dark:hover:border-brand-700 transition-all flex justify-between items-center cursor-pointer group hover:scale-[0.99]"
+                  className="p-3.5 sm:p-4 bg-slate-50/60 dark:bg-brand-950/30 border border-slate-200/80 dark:border-brand-850 rounded-2xl hover:border-slate-350 dark:hover:border-brand-700 transition-all flex justify-between items-center cursor-pointer group hover:scale-[0.99] active:scale-[0.98]"
                 >
                   <div className="flex gap-3 items-center min-w-0">
-                    <div className="w-1 h-10 rounded-full shrink-0" style={{ backgroundColor: e.color }} />
+                    <div className="w-1.5 h-10 rounded-full shrink-0" style={{ backgroundColor: e.color }} />
                     <div className="min-w-0">
                       <h4 className={`text-sm font-bold transition-colors truncate ${isEventPassed(e) ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-800 dark:text-slate-200 group-hover:text-indigo-650 dark:group-hover:text-indigo-400'}`}>
                         {e.title}
@@ -80,7 +91,7 @@ export const DayDetailModal: React.FC<DayDetailModalProps> = ({
                         {e.notes && (
                           <>
                             <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700" />
-                            <span className="truncate max-w-[150px]">{e.notes}</span>
+                            <span className="truncate max-w-[140px] sm:max-w-[180px]">{e.notes}</span>
                           </>
                         )}
                       </div>
@@ -110,15 +121,15 @@ export const DayDetailModal: React.FC<DayDetailModalProps> = ({
           )}
         </div>
 
-        <div className="mt-4 pt-3 border-t border-slate-150 dark:border-brand-850 flex justify-end gap-2">
+        <div className="mt-3 pt-3 border-t border-slate-150 dark:border-brand-850 flex justify-end gap-2 pb-safe sm:pb-0">
           <button
             onClick={() => {
               onClose();
               openCreateModal(selectedDate);
             }}
-            className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-black dark:hover:bg-slate-100 rounded-xl text-xs font-bold shadow-md transition-all shrink-0 cursor-pointer"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-black dark:hover:bg-slate-100 rounded-xl text-xs font-bold shadow-md transition-all shrink-0 cursor-pointer active:scale-95"
           >
-            <Plus size={14} /> Add Event
+            <Plus size={15} /> Add Event
           </button>
         </div>
       </div>

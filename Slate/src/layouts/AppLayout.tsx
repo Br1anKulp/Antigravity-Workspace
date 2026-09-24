@@ -314,7 +314,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
 
             {/* Stepper Controls & Add Event Button */}
             {currentTab === 'calendar' && (
-              <div className="flex items-center gap-1 shrink-0 ml-auto sm:ml-1">
+              <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-1">
+                {/* Today Quick Jump Button */}
+                <button
+                  onClick={() => setSelectedDate(new Date())}
+                  className="px-2 sm:px-2.5 py-1 sm:py-1.5 text-[11px] sm:text-xs font-extrabold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-brand-850 dark:hover:bg-brand-800 rounded-xl transition-all cursor-pointer border border-slate-200/80 dark:border-brand-800 shadow-2xs active:scale-95"
+                >
+                  Today
+                </button>
+
                 {/* Stepper Arrows */}
                 <div className="flex items-center border border-slate-200 dark:border-brand-800 rounded-xl overflow-hidden shadow-2xs bg-slate-50/50 dark:bg-brand-950">
                   <button 

@@ -15,6 +15,7 @@ import { CalendarGrid } from '../components/Calendar/CalendarGrid';
 import { ScheduleView } from '../components/Calendar/ScheduleView';
 import { DayDetailModal } from '../components/Calendar/DayDetailModal';
 import { EventModal } from '../components/Calendar/EventModal';
+import { Plus } from 'lucide-react';
 
 
 export const CalendarView: React.FC = () => {
@@ -41,6 +42,7 @@ export const CalendarView: React.FC = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showDayDetailModal, setShowDayDetailModal] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  const [partnerFilter, setPartnerFilter] = useState<'all' | 'brian' | 'chelsea'>('all');
 
   // Handle trigger from store to show create event modal
   if (showCreateEventModal && !showAddModal) {
@@ -67,6 +69,10 @@ export const CalendarView: React.FC = () => {
       const isBrian = e.assignee === 'self' || e.creatorName?.toLowerCase().includes('brian');
       const isChelsea = e.assignee === 'partner' || e.creatorName?.toLowerCase().includes('chelsea');
       const isBoth = e.assignee === 'both';
+
+      // Quick partner tab filter
+      if (partnerFilter === 'brian' && !isBrian && !isBoth) return false;
+      if (partnerFilter === 'chelsea' && !isChelsea && !isBoth) return false;
 
       if (!isBoth) {
         if (isBrian && brianCal && !brianCal.visible) return false;
@@ -95,7 +101,7 @@ export const CalendarView: React.FC = () => {
     }
 
     return deduplicated;
-  }, [getExpandedEvents, googleCals]);
+  }, [getExpandedEvents, googleCals, partnerFilter]);
 
   const isEventOnDay = React.useCallback((event: CalendarEvent, day: Date) => {
     const start = parseISO(event.start);
@@ -247,7 +253,46 @@ export const CalendarView: React.FC = () => {
       </div>
 
       {/* Main Calendar View Canvas */}
-      <div className="flex-1 space-y-4 min-w-0">
+      <div className="flex-1 space-y-3 sm:space-y-4 min-w-0">
+
+        {/* Quick Partner Filter Bar (3.B) */}
+        <div className="flex items-center justify-between gap-2 pb-0.5 sm:pb-1">
+          <div className="inline-flex p-0.5 sm:p-1 rounded-2xl bg-slate-100/90 dark:bg-brand-950/70 border border-slate-200/80 dark:border-brand-850 shadow-2xs backdrop-blur-xs">
+            <button
+              type="button"
+              onClick={() => setPartnerFilter('all')}
+              className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer ${
+                partnerFilter === 'all'
+                  ? 'bg-white dark:bg-brand-850 text-slate-900 dark:text-white shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+              }`}
+            >
+              All Events
+            </button>
+            <button
+              type="button"
+              onClick={() => setPartnerFilter('brian')}
+              className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                partnerFilter === 'brian'
+                  ? 'bg-white dark:bg-brand-850 text-blue-600 dark:text-blue-400 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+              }`}
+            >
+              <span>⚡ Brian</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPartnerFilter('chelsea')}
+              className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl text-[11px] sm:text-xs font-black transition-all cursor-pointer flex items-center gap-1 ${
+                partnerFilter === 'chelsea'
+                  ? 'bg-white dark:bg-brand-850 text-pink-600 dark:text-pink-400 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+              }`}
+            >
+              <span>🌸 Chelsea</span>
+            </button>
+          </div>
+        </div>
 
         {/* Modal overview of events for a single day */}
         <DayDetailModal
@@ -301,6 +346,16 @@ export const CalendarView: React.FC = () => {
           onDelete={handleDelete}
         />
       </div>
+
+      {/* Android Mobile Floating Action Button (1.B) */}
+      <button
+        type="button"
+        onClick={() => openCreateModal(selectedDate)}
+        aria-label="Add Event"
+        className="sm:hidden fixed bottom-20 right-4 z-40 w-13 h-13 rounded-full bg-indigo-650 hover:bg-indigo-550 active:scale-90 text-white shadow-xl shadow-indigo-600/30 flex items-center justify-center cursor-pointer transition-all border-2 border-white/20"
+      >
+        <Plus size={24} className="stroke-[2.5]" />
+      </button>
     </div>
   );
 };
