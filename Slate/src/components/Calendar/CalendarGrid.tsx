@@ -79,10 +79,14 @@ const CalendarGridComponent = ({
     const g = parseInt(hex.substring(2, 4), 16) || 0;
     const b = parseInt(hex.substring(4, 6), 16) || 0;
 
+    // Calculate relative luminance for contrast
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    const textColor = luminance > 0.65 ? '#0f172a' : '#ffffff';
+
     return {
-      bg: isDarkMode ? `rgba(${r}, ${g}, ${b}, 0.24)` : `rgba(${r}, ${g}, ${b}, 0.14)`,
-      border: baseColor,
-      text: isDarkMode ? '#f8fafc' : '#0f172a',
+      bg: baseColor,
+      border: luminance > 0.65 ? 'rgba(0, 0, 0, 0.12)' : 'rgba(255, 255, 255, 0.2)',
+      text: textColor,
       accent: baseColor
     };
   };
@@ -232,22 +236,25 @@ const CalendarGridComponent = ({
                             }
                           }}
                           className={`flex p-1 sm:p-1.5 md:p-2.5 min-h-[105px] sm:min-h-[120px] md:min-h-[140px] hover:bg-slate-50/50 dark:hover:bg-brand-850/10 cursor-pointer flex-col transition-colors ${
-                            !isCurrentMonth ? 'bg-slate-50/20 dark:bg-brand-950/5 text-slate-400 dark:text-slate-600 opacity-60' : 'bg-white dark:bg-brand-900'
-                          } ${isToday(day) ? 'bg-indigo-50/20 dark:bg-indigo-950/10' : ''} ${
-                            isSameDay(day, selectedDate)
+                            isToday(day) 
+                              ? 'bg-indigo-50/90 dark:bg-indigo-950/50 ring-2 ring-inset ring-indigo-500 dark:ring-indigo-400' 
+                              : isSameDay(day, selectedDate)
                               ? 'ring-2 ring-inset ring-indigo-500/40 bg-indigo-50/10 dark:bg-indigo-950/10'
-                              : ''
+                              : !isCurrentMonth ? 'bg-slate-50/20 dark:bg-brand-950/5 text-slate-400 dark:text-slate-600 opacity-60' : 'bg-white dark:bg-brand-900'
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1 sm:mb-1.5">
-                            <span className={`text-[10px] sm:text-[10px] md:text-[11px] font-black rounded-full w-5 h-5 sm:w-5 sm:h-5 md:w-6 md:h-6 flex items-center justify-center transition-all ${
+                            <span className={`text-[10px] sm:text-[11px] font-black rounded-full transition-all flex items-center justify-center ${
                               isToday(day) 
-                                ? 'bg-indigo-650 text-white shadow-sm font-extrabold scale-105' 
+                                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 px-2 py-0.5 scale-105' 
                                 : isSameDay(day, selectedDate)
-                                ? 'text-indigo-650 dark:text-indigo-400 font-black'
-                                : 'text-slate-650 dark:text-slate-350'
+                                ? 'text-indigo-650 dark:text-indigo-400 font-black px-1.5'
+                                : 'text-slate-650 dark:text-slate-350 px-1.5'
                             }`}>
-                              {format(day, 'd')}
+                              <span>{format(day, 'd')}</span>
+                              {isToday(day) && (
+                                <span className="text-[7.5px] font-black tracking-wider uppercase ml-1 opacity-95">Today</span>
+                              )}
                             </span>
                             {/* Feature 1.C: Density Indicator Dots */}
                             {(() => {
@@ -310,7 +317,7 @@ const CalendarGridComponent = ({
                             evt.stopPropagation();
                             evt.dataTransfer.setData('text/plain', e.id);
                           }}
-                          className={`px-1.5 py-0.5 ${roundingClass} text-[9.5px] sm:text-[10px] font-bold truncate transition-all hover:scale-[0.98] flex items-center justify-between gap-1 shadow-2xs cursor-grab active:cursor-grabbing hover:brightness-95 duration-150 pointer-events-auto h-4.5 sm:h-5 leading-none ${isEventPassed(e) ? 'opacity-40' : ''}`}
+                          className={`px-1.5 py-0.5 ${roundingClass} text-[9.5px] sm:text-[10px] font-bold truncate transition-all hover:scale-[0.98] flex items-center justify-between gap-1 shadow-xs cursor-grab active:cursor-grabbing hover:brightness-105 duration-150 pointer-events-auto h-4.5 sm:h-5 leading-none ${isEventPassed(e) ? 'opacity-40' : ''}`}
                           style={{ 
                             gridColumnStart: startIdx + 1,
                             gridColumnEnd: endIdx + 2,
@@ -318,11 +325,12 @@ const CalendarGridComponent = ({
                             gridRowEnd: trackIdx + 2,
                             backgroundColor: getEventColors(e.color).bg,
                             color: getEventColors(e.color).text,
-                            borderLeft: isSegmentStart ? `3.5px solid ${e.color}` : 'none'
+                            border: `1px solid ${getEventColors(e.color).border}`
                           }}
                           title={e.title}
                         >
                           <div className="flex items-center gap-1 min-w-0 font-bold truncate">
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-white/70 shadow-2xs" />
                             <span className={isEventPassed(e) ? 'line-through' : ''}>{e.title}</span>
                           </div>
                         </div>
@@ -490,22 +498,25 @@ const CalendarGridComponent = ({
                             }
                           }}
                           className={`flex p-1.5 md:p-2.5 min-h-[260px] md:min-h-[280px] hover:bg-slate-50/50 dark:hover:bg-brand-850/10 cursor-pointer flex-col transition-colors ${
-                            !isCurrentMonth ? 'bg-slate-50/20 dark:bg-brand-950/5 text-slate-400 dark:text-slate-600 opacity-60' : 'bg-white dark:bg-brand-900'
-                          } ${isToday(day) ? 'bg-indigo-50/20 dark:bg-indigo-950/10' : ''} ${
-                            isSameDay(day, selectedDate)
+                            isToday(day) 
+                              ? 'bg-indigo-50/90 dark:bg-indigo-950/50 ring-2 ring-inset ring-indigo-500 dark:ring-indigo-400' 
+                              : isSameDay(day, selectedDate)
                               ? 'ring-2 ring-inset ring-indigo-500/40 bg-indigo-50/10 dark:bg-indigo-950/10'
-                              : ''
+                              : !isCurrentMonth ? 'bg-slate-50/20 dark:bg-brand-950/5 text-slate-400 dark:text-slate-600 opacity-60' : 'bg-white dark:bg-brand-900'
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1.5">
-                            <span className={`text-[10px] md:text-[11px] font-black rounded-full w-5 h-5 md:w-6 md:h-6 flex items-center justify-center transition-all ${
+                            <span className={`text-[10px] md:text-[11px] font-black rounded-full transition-all flex items-center justify-center ${
                               isToday(day) 
-                                ? 'bg-indigo-650 text-white shadow-sm font-extrabold scale-105' 
+                                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 px-2 py-0.5 scale-105' 
                                 : isSameDay(day, selectedDate)
-                                ? 'text-indigo-650 dark:text-indigo-400 font-black'
-                                : 'text-slate-650 dark:text-slate-350'
+                                ? 'text-indigo-650 dark:text-indigo-400 font-black px-1.5'
+                                : 'text-slate-650 dark:text-slate-350 px-1.5'
                             }`}>
-                              {format(day, 'd')}
+                              <span>{format(day, 'd')}</span>
+                              {isToday(day) && (
+                                <span className="text-[7.5px] font-black tracking-wider uppercase ml-1 opacity-95">Today</span>
+                              )}
                             </span>
                             {/* Feature 1.C: Density Indicator Dots */}
                             {(() => {
@@ -568,7 +579,7 @@ const CalendarGridComponent = ({
                             evt.stopPropagation();
                             evt.dataTransfer.setData('text/plain', e.id);
                           }}
-                          className={`px-1 md:px-2 py-0.5 md:py-1 ${roundingClass} text-[7px] md:text-[10px] font-black truncate transition-all hover:scale-[0.98] flex items-center justify-between gap-1 shadow-sm cursor-grab active:cursor-grabbing hover:brightness-90 duration-150 pointer-events-auto ${isEventPassed(e) ? 'opacity-40' : ''}`}
+                          className={`px-1 md:px-2 py-0.5 md:py-1 ${roundingClass} text-[7px] md:text-[10px] font-black truncate transition-all hover:scale-[0.98] flex items-center justify-between gap-1 shadow-xs cursor-grab active:cursor-grabbing hover:brightness-105 duration-150 pointer-events-auto ${isEventPassed(e) ? 'opacity-40' : ''}`}
                           style={{ 
                             gridColumnStart: startIdx + 1,
                             gridColumnEnd: endIdx + 2,
@@ -576,11 +587,12 @@ const CalendarGridComponent = ({
                             gridRowEnd: trackIdx + 2,
                             backgroundColor: getEventColors(e.color).bg,
                             color: getEventColors(e.color).text,
-                            borderLeft: isSegmentStart ? `3.5px solid ${e.color}` : 'none'
+                            border: `1px solid ${getEventColors(e.color).border}`
                           }}
                           title={e.title}
                         >
                           <div className="flex items-center gap-1 min-w-0 font-medium">
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-white/70 shadow-2xs" />
                             <span className={isEventPassed(e) ? 'line-through' : ''}>{e.title}</span>
                           </div>
                         </div>
@@ -738,23 +750,26 @@ const CalendarGridComponent = ({
                       onEventDrop(eventId, day);
                     }
                   }}
-                  className={`flex border-r border-b border-slate-200 dark:border-brand-800 p-1.5 md:p-2.5 min-h-[120px] hover:bg-slate-50/50 dark:hover:bg-brand-850/10 cursor-pointer flex-col transition-colors bg-white dark:bg-brand-900 ${
-                    isToday(day) ? 'bg-indigo-50/20 dark:bg-indigo-950/10' : ''
-                  } ${
-                    isSameDay(day, selectedDate)
+                  className={`flex border-r border-b border-slate-200 dark:border-brand-800 p-1.5 md:p-2.5 min-h-[120px] hover:bg-slate-50/50 dark:hover:bg-brand-850/10 cursor-pointer flex-col transition-colors ${
+                    isToday(day) 
+                      ? 'bg-indigo-50/90 dark:bg-indigo-950/50 ring-2 ring-inset ring-indigo-500 dark:ring-indigo-400' 
+                      : isSameDay(day, selectedDate)
                       ? 'ring-2 ring-inset ring-indigo-500/40 bg-indigo-50/10 dark:bg-indigo-950/10'
-                      : ''
+                      : 'bg-white dark:bg-brand-900'
                   }`}
                 >
                   <div className="flex justify-start mb-1.5">
-                    <span className={`text-[10px] md:text-[11px] font-black rounded-full w-5 h-5 md:w-6 md:h-6 flex items-center justify-center transition-all ${
+                    <span className={`text-[10px] md:text-[11px] font-black rounded-full transition-all flex items-center justify-center ${
                       isToday(day) 
-                        ? 'bg-indigo-650 text-white shadow-sm font-extrabold scale-105' 
+                        ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 px-2 py-0.5 scale-105' 
                         : isSameDay(day, selectedDate)
-                        ? 'text-indigo-650 dark:text-indigo-400 font-black'
-                        : 'text-slate-650 dark:text-slate-350'
+                        ? 'text-indigo-650 dark:text-indigo-400 font-black px-1.5'
+                        : 'text-slate-650 dark:text-slate-350 px-1.5'
                     }`}>
-                      {format(day, 'd')}
+                      <span>{format(day, 'd')}</span>
+                      {isToday(day) && (
+                        <span className="text-[7.5px] font-black tracking-wider uppercase ml-1 opacity-95">Today</span>
+                      )}
                     </span>
                   </div>
                 </div>
@@ -800,7 +815,7 @@ const CalendarGridComponent = ({
                     evt.stopPropagation();
                     evt.dataTransfer.setData('text/plain', e.id);
                   }}
-                  className={`px-1.5 py-0 ${roundingClass} text-[9px] sm:text-[10px] font-bold truncate transition-all hover:scale-[0.98] flex items-center justify-between gap-1 shadow-2xs cursor-grab active:cursor-grabbing hover:brightness-95 duration-150 pointer-events-auto h-4 sm:h-5 leading-none ${isEventPassed(e) ? 'opacity-40' : ''}`}
+                  className={`px-1.5 py-0 ${roundingClass} text-[9px] sm:text-[10px] font-bold truncate transition-all hover:scale-[0.98] flex items-center justify-between gap-1 shadow-xs cursor-grab active:cursor-grabbing hover:brightness-105 duration-150 pointer-events-auto h-4 sm:h-5 leading-none ${isEventPassed(e) ? 'opacity-40' : ''}`}
                   style={{ 
                     gridColumnStart: startIdx + 1,
                     gridColumnEnd: endIdx + 2,
@@ -808,15 +823,16 @@ const CalendarGridComponent = ({
                     gridRowEnd: trackIdx + 2,
                     backgroundColor: getEventColors(e.color).bg,
                     color: getEventColors(e.color).text,
-                    borderLeft: isSegmentStart ? `3.5px solid ${e.color}` : 'none'
+                    border: `1px solid ${getEventColors(e.color).border}`
                   }}
                   title={e.title}
                 >
                   <div className="flex items-center gap-0.5 md:gap-1 min-w-0">
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-white/70 shadow-2xs" />
                     {e.recurring && e.recurring.frequency !== 'none' && <RefreshCw className="animate-spin-slow shrink-0 w-1.5 h-1.5 md:w-2 md:h-2" />}
                     <span className={isEventPassed(e) ? 'line-through' : ''}>{e.title}</span>
                   </div>
-                  <span className="hidden sm:inline text-[8px] font-bold shrink-0 opacity-70">
+                  <span className="hidden sm:inline text-[8px] font-bold shrink-0 opacity-80">
                     {e.assignee === 'both' ? '👥' : e.creatorId === user?.uid ? 'Me' : 'Partner'}
                   </span>
                 </div>
@@ -939,9 +955,15 @@ const CalendarGridComponent = ({
                 setSelectedDate(d);
                 setShowDayDetailModal(true);
               }}
-              className={`cursor-pointer hover:underline ${isToday(d) ? 'text-indigo-650 dark:text-indigo-400 font-bold' : ''}`}
+              className={`cursor-pointer transition-all flex items-center justify-center gap-1.5 ${
+                isToday(d) 
+                  ? 'text-indigo-650 dark:text-indigo-400 font-black' 
+                  : 'hover:underline text-slate-500 dark:text-slate-400'
+              }`}
             >
-              {format(d, 'E d')}
+              <span className={isToday(d) ? 'bg-indigo-600 text-white shadow-sm px-2.5 py-0.5 rounded-full scale-105' : ''}>
+                {format(d, 'E d')} {isToday(d) && '· Today'}
+              </span>
             </div>
           ))}
         </div>
@@ -982,7 +1004,7 @@ const CalendarGridComponent = ({
                     }}
                     onMouseEnter={(evt) => handleMouseEnter(e, evt.currentTarget)}
                     onMouseLeave={handleMouseLeave}
-                    className={`rounded-lg p-1.5 text-[10px] font-bold shadow-sm truncate hover:brightness-90 transition-all text-left cursor-pointer pointer-events-auto ${isEventPassed(e) ? 'opacity-40' : ''}`}
+                    className={`rounded-lg p-1.5 text-[10px] font-bold shadow-xs truncate hover:brightness-105 transition-all text-left cursor-pointer pointer-events-auto flex items-center gap-1 ${isEventPassed(e) ? 'opacity-40' : ''}`}
                     style={{
                       gridColumnStart: startIdx + 1,
                       gridColumnEnd: endIdx + 2,
@@ -990,10 +1012,11 @@ const CalendarGridComponent = ({
                       gridRowEnd: trackIdx + 2,
                       backgroundColor: getEventColors(e.color).bg,
                       color: getEventColors(e.color).text,
-                      borderLeft: `3.5px solid ${e.color}`
+                      border: `1px solid ${getEventColors(e.color).border}`
                     }}
                     title={e.title}
                   >
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-white/70 shadow-2xs" />
                     <span className={isEventPassed(e) ? 'line-through' : ''}>{e.title}</span>
                   </div>
                 );
@@ -1053,15 +1076,18 @@ const CalendarGridComponent = ({
                           }}
                           onMouseEnter={(evt) => handleMouseEnter(e, evt.currentTarget)}
                           onMouseLeave={handleMouseLeave}
-                          className={`absolute inset-1 rounded-xl p-1.5 text-xs font-extrabold shadow-sm overflow-hidden flex flex-col justify-between ${isEventPassed(e) ? 'opacity-40' : ''}`}
+                          className={`absolute inset-1 rounded-xl p-2 text-xs font-extrabold shadow-sm hover:shadow-md hover:brightness-105 transition-all overflow-hidden flex flex-col justify-between ${isEventPassed(e) ? 'opacity-40' : ''}`}
                           style={{ 
                             backgroundColor: getEventColors(e.color).bg, 
                             color: getEventColors(e.color).text,
-                            borderLeft: `3.5px solid ${e.color}`
+                            border: `1px solid ${getEventColors(e.color).border}`
                           }}
                         >
-                          <div className={`truncate leading-tight ${isEventPassed(e) ? 'line-through' : ''}`}>{e.title}</div>
-                          <div className="flex items-center gap-1 text-[9px] opacity-90 mt-0.5">
+                          <div className="flex items-start gap-1 min-w-0">
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-white/70 mt-1 shadow-2xs" />
+                            <div className={`truncate leading-tight font-black ${isEventPassed(e) ? 'line-through' : ''}`}>{e.title}</div>
+                          </div>
+                          <div className="flex items-center gap-1 text-[9px] opacity-90 mt-0.5 font-semibold">
                             <Clock size={10} />
                             <span>{e.duration}m</span>
                           </div>
