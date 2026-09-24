@@ -6,7 +6,8 @@ import {
   deleteDoc, 
   query, 
   where, 
-  getDoc
+  getDoc,
+  writeBatch
 } from 'firebase/firestore';
 import type { Firestore, WhereFilterOp } from 'firebase/firestore';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
@@ -240,6 +241,29 @@ export const dbService = {
     } else {
       const docRef = doc(db as Firestore, colName, docId);
       await deleteDoc(docRef);
+    }
+  },
+
+  // Document management: Atomic batch delete multiple documents
+  batchDelete: async (colName: string, docIds: string[]) => {
+    if (!docIds || docIds.length === 0) return;
+    if (isMockMode) {
+      const idSet = new Set(docIds);
+      let items = getMockCollection(colName) as DbItem[];
+      items = items.filter(item => !item.id || !idSet.has(item.id));
+      saveMockCollection(colName, items);
+    } else {
+      const firestore = db as Firestore;
+      const CHUNK_SIZE = 400; // Firestore allows up to 500 operations per batch
+      for (let i = 0; i < docIds.length; i += CHUNK_SIZE) {
+        const chunk = docIds.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(firestore);
+        chunk.forEach(id => {
+          const docRef = doc(firestore, colName, id);
+          batch.delete(docRef);
+        });
+        await batch.commit();
+      }
     }
   },
 

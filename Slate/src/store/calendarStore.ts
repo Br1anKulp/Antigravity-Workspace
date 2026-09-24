@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { dbService } from '../firebase/db';
-import { addDays, addWeeks, addMonths, parseISO } from 'date-fns';
+import { addDays, addWeeks, addMonths, parseISO, format } from 'date-fns';
 import { useAuthStore } from './authStore';
 import { useNotificationStore } from './notificationStore';
+
 export interface CalendarEvent {
   id: string;
   title: string;
@@ -24,6 +25,31 @@ export interface CalendarEvent {
     until?: string; // ISO date string
   };
 }
+
+export const isIcalEvent = (e: CalendarEvent): boolean => {
+  const calId = (e.googleCalendarId || '').toLowerCase();
+  const calName = (e.googleCalendarName || '').toLowerCase();
+  const notes = (e.notes || '').toLowerCase();
+  const title = (e.title || '').toLowerCase();
+
+  return (
+    notes.includes('live ical feed') ||
+    notes.includes('mvbc') ||
+    notes.includes('.ics') ||
+    notes.includes('webcal') ||
+    calName.includes('mvbc') ||
+    calName.includes('ical') ||
+    calName.startsWith('http') ||
+    calName.startsWith('webcal') ||
+    calId.startsWith('http') ||
+    calId.startsWith('webcal') ||
+    calId.includes('.ics') ||
+    calId.includes('mvbc') ||
+    calId.includes('churchcenter') ||
+    title.includes('mvbc') ||
+    title.includes('live ical feed')
+  );
+};
 
 interface CalendarState {
   events: CalendarEvent[];
@@ -57,6 +83,7 @@ interface CalendarState {
   ) => Promise<{ imported: number }>;
   clearGoogleEvents: () => Promise<void>;
   clearGoogleCalendarEvents: (calendarId: string, color?: string, calendarName?: string) => Promise<void>;
+  purgeIcalEvents: () => Promise<{ purgedCount: number }>;
   updateCalendarColor: (calendarId: string, newColor: string) => Promise<void>;
   removeCalendarFeed: (calendarId: string, summary?: string, color?: string) => Promise<void>;
   deduplicateEvents: () => Promise<{ deletedCount: number }>;
@@ -111,7 +138,12 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
           return [];
         })();
 
-    const filteredSource = sourceConfigs.filter(c => !legacyIds.includes(c.id) && !legacyIds.includes(c.summary || ''));
+    const filteredSource = sourceConfigs.filter(c => {
+      if (legacyIds.includes(c.id) || legacyIds.includes(c.summary || '')) return false;
+      const check = `${c.id} ${c.summary || ''}`.toLowerCase();
+      if (check.includes('mvbc') || check.includes('ical') || check.includes('.ics') || check.includes('webcal') || check.includes('http:') || check.includes('https:')) return false;
+      return true;
+    });
     filteredSource.forEach(c => {
       const idx = result.findIndex(r => r.id === c.id);
       if (idx !== -1) {
@@ -211,9 +243,11 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
           return c;
         });
 
-        // Only add a calendar if it is explicitly in userConfigs / savedCals
+        // Only add a calendar if it is explicitly in userConfigs / savedCals and not an external feed
         savedCals.forEach(sc => {
           if (!sc.id) return;
+          const check = `${sc.id} ${sc.summary || ''}`.toLowerCase();
+          if (check.includes('mvbc') || check.includes('ical') || check.includes('.ics') || check.includes('webcal') || check.includes('http:') || check.includes('https:')) return;
           const exists = updated.some(u => u.id === sc.id);
           if (!exists) {
             updated.push({
@@ -305,8 +339,41 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
   },
 
   deleteEvent: async (id) => {
-    const event = get().events.find(e => e.id === id);
-    await dbService.delete('events', id);
+    const { events } = get();
+    const event = events.find(e => e.id === id);
+
+    // Find all identical duplicates of this event (by id, googleEventId, or normalized title + day)
+    const idsToDelete = [id];
+    if (event) {
+      const normTitle = (event.title || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const eventStart = new Date(event.start);
+      const eventDay = isNaN(eventStart.getTime()) ? (event.start || '').slice(0, 10) : format(eventStart, 'yyyy-MM-dd');
+
+      events.forEach(e => {
+        if (e.id === id) return;
+        // Same googleEventId -> duplicate
+        if (event.googleEventId && e.googleEventId && e.googleEventId === event.googleEventId) {
+          idsToDelete.push(e.id);
+          return;
+        }
+        // Same normalized title and day date -> duplicate
+        const eNormTitle = (e.title || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        const eStart = new Date(e.start);
+        const eDay = isNaN(eStart.getTime()) ? (e.start || '').slice(0, 10) : format(eStart, 'yyyy-MM-dd');
+        if (normTitle && eNormTitle === normTitle && eventDay && eDay === eventDay) {
+          idsToDelete.push(e.id);
+        }
+      });
+    }
+
+    // 1. Instantly update in-memory state so it immediately vanishes (optimistic UI)
+    const deleteSet = new Set(idsToDelete);
+    set(state => ({
+      events: state.events.filter(e => !deleteSet.has(e.id))
+    }));
+
+    // 2. Perform atomic batch delete in Firestore
+    await dbService.batchDelete('events', idsToDelete);
 
     // Notify partner
     const authStore = useAuthStore.getState();
@@ -400,11 +467,10 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
     if (!user) return;
 
     const legacyEvents = get().events.filter(e => !!e.googleEventId && e.creatorId === user.uid);
-    const CHUNK_SIZE = 25;
-    for (let i = 0; i < legacyEvents.length; i += CHUNK_SIZE) {
-      const chunk = legacyEvents.slice(i, i + CHUNK_SIZE);
-      await Promise.all(chunk.map(e => dbService.delete('events', e.id).catch(() => {})));
-    }
+    const ids = legacyEvents.map(e => e.id);
+    const idSet = new Set(ids);
+    set(state => ({ events: state.events.filter(e => !idSet.has(e.id)) }));
+    await dbService.batchDelete('events', ids);
   },
 
   clearGoogleCalendarEvents: async (calendarId, color, calendarName) => {
@@ -422,16 +488,34 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
       return false;
     });
 
-    const matchedIds = new Set(matchedEvents.map(e => e.id));
+    const matchedIds = matchedEvents.map(e => e.id);
+    const idSet = new Set(matchedIds);
     set(state => ({
-      events: state.events.filter(e => !matchedIds.has(e.id))
+      events: state.events.filter(e => !idSet.has(e.id))
     }));
 
-    const CHUNK_SIZE = 25;
-    for (let i = 0; i < matchedEvents.length; i += CHUNK_SIZE) {
-      const chunk = matchedEvents.slice(i, i + CHUNK_SIZE);
-      await Promise.all(chunk.map(e => dbService.delete('events', e.id).catch(() => {})));
+    await dbService.batchDelete('events', matchedIds);
+  },
+
+  purgeIcalEvents: async () => {
+    const { events } = get();
+    const icalEvents = events.filter(isIcalEvent);
+    if (icalEvents.length === 0) {
+      return { purgedCount: 0 };
     }
+
+    const icalIds = icalEvents.map(e => e.id);
+    const idSet = new Set(icalIds);
+
+    // 1. Instantly remove from local store (optimistic UI)
+    set(state => ({
+      events: state.events.filter(e => !idSet.has(e.id))
+    }));
+
+    // 2. Perform atomic batch deletion from Firestore
+    await dbService.batchDelete('events', icalIds);
+
+    return { purgedCount: icalIds.length };
   },
 
   deduplicateEvents: async () => {
@@ -450,20 +534,21 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
     sorted.forEach(e => {
       const normTitle = (e.title || '').trim().toLowerCase().replace(/\s+/g, ' ');
       const startDate = new Date(e.start);
-      const startKey = isNaN(startDate.getTime())
-        ? (e.start || '').slice(0, 16)
-        : e.allDay
+      const dateKey = isNaN(startDate.getTime())
         ? (e.start || '').slice(0, 10)
-        : Math.floor(startDate.getTime() / 60000).toString();
+        : format(startDate, 'yyyy-MM-dd');
 
-      const key = `${normTitle}_${startKey}_${e.allDay ? 'allDay' : 'time'}`;
+      // Deduplicate by normalized title and date day
+      const key = `${normTitle}_${dateKey}`;
+      const gKey = e.googleEventId ? `gid_${e.googleEventId}` : null;
+      const existingKey = gKey && uniqueEvents.has(gKey) ? gKey : (uniqueEvents.has(key) ? key : null);
 
-      if (uniqueEvents.has(key)) {
-        const kept = uniqueEvents.get(key)!;
+      if (existingKey) {
+        const kept = uniqueEvents.get(existingKey)!;
         toDelete.push(e.id);
 
         let modified = false;
-        // If duplicate has shared visibility, upgrade kept event to shared
+        // Upgrade to shared if duplicate has shared visibility
         if (e.assignee === 'both' && kept.assignee !== 'both') {
           kept.assignee = 'both';
           modified = true;
@@ -478,8 +563,15 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
         }
       } else {
         uniqueEvents.set(key, { ...e });
+        if (gKey) {
+          uniqueEvents.set(gKey, { ...e });
+        }
       }
     });
+
+    if (toDelete.length === 0 && toUpdate.length === 0) {
+      return { deletedCount: 0 };
+    }
 
     // 1. Instantly update in-memory state
     const deleteSet = new Set(toDelete);
@@ -497,12 +589,8 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
       await dbService.set('events', item.id, item).catch(err => console.error("Failed to update merged event:", item.id, err));
     }
 
-    // 3. Perform batched deletes from Firestore
-    const CHUNK_SIZE = 25;
-    for (let i = 0; i < toDelete.length; i += CHUNK_SIZE) {
-      const chunk = toDelete.slice(i, i + CHUNK_SIZE);
-      await Promise.all(chunk.map(id => dbService.delete('events', id).catch(err => console.error("Failed to delete duplicate event:", id, err))));
-    }
+    // 3. Perform batched atomic deletes from Firestore
+    await dbService.batchDelete('events', toDelete);
 
     return { deletedCount: toDelete.length };
   },

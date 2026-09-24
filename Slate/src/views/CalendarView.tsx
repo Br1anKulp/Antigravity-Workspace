@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { useCalendarStore } from '../store/calendarStore';
+import { useCalendarStore, isIcalEvent } from '../store/calendarStore';
 import type { CalendarEvent } from '../store/calendarStore';
 import { useAuthStore } from '../store/authStore';
 import { LoadingSkeleton } from '../components/LoadingSkeleton';
 import { 
   parseISO,
   startOfDay,
-  endOfDay
+  endOfDay,
+  format
 } from 'date-fns';
 
 import { CalendarSidebar } from '../components/Calendar/CalendarSidebar';
@@ -27,6 +28,7 @@ export const CalendarView: React.FC = () => {
     addEvent,
     updateEvent,
     deleteEvent,
+    purgeIcalEvents,
     getExpandedEvents,
     googleCals,
     showCreateEventModal,
@@ -59,6 +61,9 @@ export const CalendarView: React.FC = () => {
     const chelseaCal = googleCals.find(c => c.id === 'chelsea-slate');
 
     const filtered = raw.filter(e => {
+      // Completely hide any lingering iCal / external feed events
+      if (isIcalEvent(e)) return false;
+
       const isBrian = e.assignee === 'self' || e.creatorName?.toLowerCase().includes('brian');
       const isChelsea = e.assignee === 'partner' || e.creatorName?.toLowerCase().includes('chelsea');
       const isBoth = e.assignee === 'both';
@@ -77,8 +82,11 @@ export const CalendarView: React.FC = () => {
 
     for (const e of filtered) {
       const normTitle = (e.title || '').trim().toLowerCase().replace(/\s+/g, ' ');
-      const startTime = e.start ? e.start.slice(0, 16) : '';
-      const key = `${normTitle}_${startTime}_${e.allDay ? 'allDay' : 'timed'}`;
+      const startDate = new Date(e.start);
+      const dateKey = isNaN(startDate.getTime())
+        ? (e.start || '').slice(0, 10)
+        : format(startDate, 'yyyy-MM-dd');
+      const key = `${normTitle}_${dateKey}`;
 
       if (!seen.has(key)) {
         seen.add(key);
@@ -164,6 +172,13 @@ export const CalendarView: React.FC = () => {
       }
     }
   }, [events, openEditModal]);
+
+  // Auto-clean any leftover iCal feed events in the database silently in the background
+  useEffect(() => {
+    if (events.some(isIcalEvent)) {
+      purgeIcalEvents().catch(err => console.error("Auto purge iCal error:", err));
+    }
+  }, [events, purgeIcalEvents]);
 
 
 

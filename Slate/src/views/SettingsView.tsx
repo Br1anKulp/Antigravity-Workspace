@@ -13,14 +13,15 @@ import {
   Check, 
   Database,
   Calendar,
-  Sparkles
+  Sparkles,
+  Trash2
 } from 'lucide-react';
 import { isMockMode } from '../firebase/config';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 
 export const SettingsView: React.FC = () => {
   const { user, partner, updateProfile, theme } = useAuthStore();
-  const { events, deduplicateEvents } = useCalendarStore();
+  const { events, deduplicateEvents, purgeIcalEvents } = useCalendarStore();
   const { tasks } = useTasksStore();
   const { notes } = useNotesStore();
 
@@ -71,6 +72,31 @@ export const SettingsView: React.FC = () => {
       console.error(err);
       setImportStatus({ type: 'error', message: err instanceof Error ? err.message : 'Deduplication failed.' });
     }
+  };
+
+  const handlePurgeIcal = () => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Purge iCal Feeds (MVBC)',
+      message: 'Are you sure you want to permanently delete all leftover iCal feed events (such as MVBC and external links) from the database? Your personal and shared family events will not be affected.',
+      onConfirm: async () => {
+        closeConfirmDialog();
+        setImportStatus({ type: 'loading', message: 'Purging iCal feed events...' });
+        try {
+          const res = await purgeIcalEvents();
+          setImportStatus({
+            type: 'success',
+            message: res.purgedCount > 0
+              ? `Successfully purged ${res.purgedCount} iCal event(s)! All outside feeds removed.`
+              : 'No leftover iCal events found in the database.'
+          });
+          setTimeout(() => setImportStatus({ type: 'idle', message: null }), 4000);
+        } catch (err) {
+          console.error(err);
+          setImportStatus({ type: 'error', message: err instanceof Error ? err.message : 'Purge failed.' });
+        }
+      }
+    });
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
@@ -353,15 +379,26 @@ export const SettingsView: React.FC = () => {
                   Reconcile cross-account entries and remove duplicate cards across devices.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={handleDeduplicateEvents}
-                disabled={importStatus.type === 'loading'}
-                className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-650 hover:bg-indigo-550 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50 shrink-0"
-              >
-                <Sparkles size={14} />
-                {importStatus.type === 'loading' ? 'Reconciling...' : 'Clean Duplicate Events'}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleDeduplicateEvents}
+                  disabled={importStatus.type === 'loading'}
+                  className="flex items-center justify-center gap-1.5 px-3.5 py-2 bg-indigo-650 hover:bg-indigo-550 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  <Sparkles size={14} />
+                  {importStatus.type === 'loading' ? 'Reconciling...' : 'Clean Duplicate Events'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePurgeIcal}
+                  disabled={importStatus.type === 'loading'}
+                  className="flex items-center justify-center gap-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200/50 dark:border-rose-900/30 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  <Trash2 size={14} />
+                  Purge iCal Feeds (MVBC)
+                </button>
+              </div>
             </div>
 
             {importStatus.message && (
