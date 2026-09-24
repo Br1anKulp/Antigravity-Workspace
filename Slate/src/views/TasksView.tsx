@@ -20,6 +20,7 @@ import { useToast } from '../components/Toast';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { LoadingSkeleton } from '../components/LoadingSkeleton';
 import confetti from 'canvas-confetti';
+import { hapticSuccess, hapticLight } from '../utils/haptics';
 
 export const TasksView: React.FC = () => {
   const { 
@@ -168,10 +169,17 @@ export const TasksView: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    const handleOpenAddTask = () => setShowAddModal(true);
+    window.addEventListener('slate-open-add-task', handleOpenAddTask);
+    return () => window.removeEventListener('slate-open-add-task', handleOpenAddTask);
+  }, []);
+
   const handleToggle = async (id: string) => {
     const task = tasks.find(t => t.id === id);
     const wasCompleted = await toggleComplete(id);
     if (wasCompleted) {
+      hapticSuccess();
       confetti({
         particleCount: 100,
         spread: 70,
@@ -187,6 +195,7 @@ export const TasksView: React.FC = () => {
         }, 10000);
       }
     } else {
+      hapticLight();
       setShowUndoToast(false);
     }
   };
@@ -341,15 +350,18 @@ export const TasksView: React.FC = () => {
     <div className="space-y-6">
       
       {/* Filtering Header */}
-      <div className="flex flex-col lg:flex-row justify-between items-center gap-4 bg-white dark:bg-brand-900 p-4 rounded-2xl border border-slate-200 dark:border-brand-800 shadow-sm">
+      <div className="flex flex-col lg:flex-row justify-between items-center gap-4 bg-white dark:bg-brand-900 p-4 rounded-2xl border border-slate-300 dark:border-slate-800 shadow-sm">
         <div className="flex bg-slate-100 dark:bg-brand-950 p-1 rounded-xl w-full lg:w-auto overflow-x-auto no-scrollbar">
           {(['all', 'mine', 'partner', 'shared', 'overdue', 'completed'] as const).map((f) => (
             <button
               key={f}
-              onClick={() => setFilter(f)}
-              className={`flex-1 lg:flex-initial text-center px-4 py-2 rounded-lg text-xs font-semibold capitalize transition-all whitespace-nowrap ${
+              onClick={() => {
+                hapticLight();
+                setFilter(f);
+              }}
+              className={`flex-1 lg:flex-initial text-center px-4 py-2 rounded-lg text-xs font-semibold capitalize transition-all whitespace-nowrap cursor-pointer ${
                 filter === f
-                  ? 'bg-white text-slate-900 dark:bg-brand-850 dark:text-white shadow-sm'
+                  ? 'bg-white text-slate-900 dark:bg-brand-850 dark:text-white shadow-sm font-bold'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
             >
@@ -361,8 +373,11 @@ export const TasksView: React.FC = () => {
         <div className="flex items-center gap-3 w-full lg:w-auto">
           <select
             value={sortBy}
-            onChange={e => setSortBy(e.target.value as 'dueDate' | 'priority' | 'createdAt' | 'title')}
-            className="flex-1 lg:flex-initial px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-brand-850 dark:hover:bg-brand-800 border border-slate-200 dark:border-brand-750 rounded-xl text-xs font-semibold focus:outline-none text-slate-800 dark:text-slate-250 transition-colors"
+            onChange={e => {
+              hapticLight();
+              setSortBy(e.target.value as 'dueDate' | 'priority' | 'createdAt' | 'title');
+            }}
+            className="flex-1 lg:flex-initial px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-brand-850 dark:hover:bg-brand-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold focus:outline-none text-slate-800 dark:text-slate-200 transition-colors cursor-pointer"
           >
             <option value="dueDate">Sort by Due Date</option>
             <option value="priority">Sort by Priority</option>
@@ -371,8 +386,11 @@ export const TasksView: React.FC = () => {
           </select>
 
           <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-black dark:hover:bg-slate-100 text-white font-bold rounded-xl text-xs shadow-md transition-all shrink-0"
+            onClick={() => {
+              hapticLight();
+              setShowAddModal(true);
+            }}
+            className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-black dark:hover:bg-slate-100 text-white font-bold rounded-xl text-xs shadow-md transition-all shrink-0 cursor-pointer"
           >
             <Plus size={14} /> Add Task
           </button>
@@ -383,7 +401,7 @@ export const TasksView: React.FC = () => {
       {loading ? (
         <LoadingSkeleton type="list" />
       ) : activeTasks.length === 0 ? (
-        <div className="bg-white dark:bg-brand-900 rounded-3xl p-12 text-center border border-slate-200 dark:border-brand-800 shadow-sm max-w-lg mx-auto">
+        <div className="bg-white dark:bg-brand-900 rounded-3xl p-12 text-center border border-slate-300 dark:border-slate-800 shadow-sm max-w-lg mx-auto">
           <div className="w-12 h-12 bg-slate-100 dark:bg-brand-950 rounded-2xl flex items-center justify-center mx-auto mb-4 text-slate-400">
             <CheckCircle2 size={24} />
           </div>
@@ -391,7 +409,7 @@ export const TasksView: React.FC = () => {
           <p className="text-xs text-slate-400 dark:text-slate-500 mb-6">No pending tasks matching your selection.</p>
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-black dark:hover:bg-slate-100 text-white text-xs font-bold rounded-xl shadow transition-all"
+            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:text-black dark:hover:bg-slate-100 text-white text-xs font-bold rounded-xl shadow transition-all cursor-pointer"
           >
             Create your first task
           </button>
@@ -408,9 +426,9 @@ export const TasksView: React.FC = () => {
             return (
               <div
                 key={task.id}
-                className={`bg-white dark:bg-brand-900 border rounded-2xl p-4 flex gap-4 items-start shadow-sm hover:border-slate-300 dark:hover:border-brand-750 transition-all ${
+                className={`bg-white dark:bg-brand-900 border rounded-2xl p-4 flex gap-4 items-start shadow-sm hover:border-slate-400 dark:hover:border-slate-700 transition-all card-interactive ${
                   task.completed ? 'opacity-60 bg-slate-50/50 dark:bg-brand-950/20' : ''
-                } ${isOverdue ? 'border-rose-100 dark:border-rose-950/50' : 'border-slate-200 dark:border-brand-800'}`}
+                } ${isOverdue ? 'border-rose-300 dark:border-rose-900/70 ring-1 ring-rose-500/20' : 'border-slate-300 dark:border-slate-800'}`}
               >
                 {/* Complete checkbox */}
                 <input
@@ -431,12 +449,18 @@ export const TasksView: React.FC = () => {
                     </h4>
 
                     {/* Priority badge */}
-                    <span className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0 ${
-                      task.priority === 'urgent' ? 'bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300' :
-                      task.priority === 'high' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300' :
-                      task.priority === 'medium' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' :
-                      'bg-slate-100 text-slate-700 dark:bg-brand-950/40 dark:text-slate-300'
+                    <span className={`text-[9.5px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1 border ${
+                      task.priority === 'urgent' ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-900/50' :
+                      task.priority === 'high' ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-900/50' :
+                      task.priority === 'medium' ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-900/50' :
+                      'bg-slate-50 dark:bg-brand-850/60 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-brand-800'
                     }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${
+                        task.priority === 'urgent' ? 'bg-rose-500' :
+                        task.priority === 'high' ? 'bg-amber-500' :
+                        task.priority === 'medium' ? 'bg-blue-500' :
+                        'bg-slate-400'
+                      }`} />
                       {task.priority}
                     </span>
                   </div>

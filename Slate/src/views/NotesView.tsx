@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNotesStore } from '../store/notesStore';
 import type { NoteItem } from '../store/notesStore';
 import { useAuthStore } from '../store/authStore';
@@ -25,6 +25,7 @@ import {
   Paperclip,
   ArrowLeft
 } from 'lucide-react';
+import { hapticLight, hapticMedium, hapticSuccess } from '../utils/haptics';
 
 const fontSizeClasses = {
   xs: 'text-xs',
@@ -111,6 +112,7 @@ export const NotesView: React.FC = () => {
   
   // Handle note selection
   const selectNote = (note: NoteItem) => {
+    hapticLight();
     // Clear any pending autosave first
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
@@ -124,6 +126,12 @@ export const NotesView: React.FC = () => {
     setSaveStatus('idle');
     setEditorMode('edit');
   };
+
+  useEffect(() => {
+    const handleOpenAddNote = () => handleCreateNote();
+    window.addEventListener('slate-open-add-note', handleOpenAddNote);
+    return () => window.removeEventListener('slate-open-add-note', handleOpenAddNote);
+  }, [activeTab, user]);
 
   // Trigger debounced autosave
   const triggerAutoSave = (updatedFields: Partial<NoteItem>) => {
@@ -174,10 +182,12 @@ export const NotesView: React.FC = () => {
       content: editorContent,
       tags: parsedTags
     });
+    hapticSuccess();
     setSaveStatus('saved');
   };
 
   const handlePinToggle = () => {
+    hapticLight();
     const nextVal = !editorIsPinned;
     setEditorIsPinned(nextVal);
     updateNote(selectedNoteId!, { isPinned: nextVal });
@@ -208,6 +218,7 @@ export const NotesView: React.FC = () => {
   };
 
   const handleCreateNote = async () => {
+    hapticMedium();
     const title = 'Untitled Note';
     const content = '';
     const isShared = activeTab === 'shared';
@@ -320,7 +331,7 @@ export const NotesView: React.FC = () => {
     <div className="flex flex-col lg:flex-row gap-6 h-[720px] animate-in fade-in duration-200">
       
       {/* Notes Sidebar List */}
-      <div className={`w-full lg:w-80 flex flex-col bg-white dark:bg-brand-900 border border-slate-200 dark:border-brand-800 rounded-3xl overflow-hidden shadow-sm shrink-0 ${selectedNoteId ? 'hidden lg:flex' : 'flex'}`}>
+      <div className={`w-full lg:w-80 flex flex-col bg-white dark:bg-brand-900 border border-slate-300 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm shrink-0 ${selectedNoteId ? 'hidden lg:flex' : 'flex'}`}>
         
         {/* Visibility Toggles */}
         <div className="flex border-b border-slate-100 dark:border-brand-800 p-1.5 bg-slate-50/50 dark:bg-brand-950/20">
@@ -439,7 +450,7 @@ export const NotesView: React.FC = () => {
       </div>
 
       {/* Note Editor Area */}
-      <div className={`flex-1 bg-white dark:bg-brand-900 border border-slate-200 dark:border-brand-800 rounded-3xl overflow-hidden shadow-sm flex flex-col ${selectedNoteId ? 'flex' : 'hidden lg:flex'}`}>
+      <div className={`flex-1 bg-white dark:bg-brand-900 border border-slate-300 dark:border-slate-800 rounded-3xl overflow-hidden shadow-sm flex flex-col ${selectedNoteId ? 'flex' : 'hidden lg:flex'}`}>
         {selectedNoteId && selectedNote ? (
           <>
             {/* Editor Toolbar Header */}

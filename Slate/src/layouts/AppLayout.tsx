@@ -28,12 +28,17 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
-  ChevronDown
+  ChevronDown,
+  Search,
+  MoreHorizontal
 } from 'lucide-react';
 import { addDays, subDays, addMonths, subMonths, setMonth, setYear } from 'date-fns';
 import { isMockMode } from '../firebase/config';
 import { useListsStore } from '../store/listsStore';
 import { CAL_PALETTE } from '../utils/constants';
+import { CommandPalette } from '../components/CommandPalette';
+import { FloatingActionButton } from '../components/FloatingActionButton';
+import { hapticLight, hapticMedium } from '../utils/haptics';
 
 
 
@@ -83,8 +88,35 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
 
   const [showBellMenu, setShowBellMenu] = useState(false);
   const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showMobileMoreSheet, setShowMobileMoreSheet] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [lastReadChat, setLastReadChat] = useState<string>(localStorage.getItem('slate_last_read_chat') || new Date(0).toISOString());
+
+  // Global keyboard shortcut for Command Palette (Cmd+K / Ctrl+K)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShowCommandPalette(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Sync Android / mobile browser theme-color meta tags
+  useEffect(() => {
+    const metaLight = document.getElementById('theme-color-light');
+    const metaDark = document.getElementById('theme-color-dark');
+    if (metaLight && metaDark) {
+      if (theme === 'dark') {
+        metaDark.setAttribute('content', '#0a0d14');
+      } else {
+        metaLight.setAttribute('content', '#ffffff');
+      }
+    }
+  }, [theme]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -454,7 +486,21 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Spotlight / Command Palette Button */}
+            <button
+              onClick={() => {
+                hapticLight();
+                setShowCommandPalette(true);
+              }}
+              className="p-2 sm:px-3 sm:py-1.5 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-brand-850 border border-slate-200/80 dark:border-brand-800 transition-colors flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              title="Search and Commands (Ctrl+K)"
+            >
+              <Search size={16} />
+              <span className="hidden sm:inline text-xs font-semibold text-slate-500 dark:text-slate-400">Search</span>
+              <kbd className="hidden sm:inline text-[9px] font-extrabold bg-slate-100 dark:bg-brand-800 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded border border-slate-200 dark:border-brand-700">⌘K</kbd>
+            </button>
+
             {/* Theme toggle mobile */}
             <button 
               onClick={toggleTheme} 
@@ -625,25 +671,41 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
         </main>
       </div>
 
-      {/* Mobile Bottom Navigation Bar */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-brand-900/95 border-t border-slate-200 dark:border-brand-800 flex items-center justify-around pt-2 pb-[calc(8px+env(safe-area-inset-bottom))] z-40 backdrop-blur-md font-medium">
-        {navItems.map((item) => {
+      {/* Universal Contextual Floating Action Button (Mobile) */}
+      <FloatingActionButton 
+        currentTab={currentTab} 
+        setCurrentTab={setCurrentTab} 
+      />
+
+      {/* Spotlight Command Palette (Cmd+K / Ctrl+K) */}
+      <CommandPalette 
+        isOpen={showCommandPalette} 
+        onClose={() => setShowCommandPalette(false)} 
+        setCurrentTab={setCurrentTab} 
+      />
+
+      {/* Streamlined Mobile Bottom Navigation Bar (4 Primary + More) */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-brand-900/95 border-t border-slate-300 dark:border-slate-800 flex items-center justify-around pt-1.5 pb-[calc(6px+env(safe-area-inset-bottom))] z-30 backdrop-blur-lg font-medium shadow-lg">
+        {navItems.slice(0, 4).map((item) => {
           const Icon = item.icon;
           const isActive = currentTab === item.id;
           return (
             <button
               key={item.id}
-              onClick={() => setCurrentTab(item.id)}
-              className={`relative flex flex-col items-center gap-0.5 py-1 px-3 rounded-xl transition-all duration-200 ${
+              onClick={() => {
+                hapticLight();
+                setCurrentTab(item.id);
+              }}
+              className={`relative flex-1 flex flex-col items-center gap-0.5 py-1 px-1 rounded-xl transition-all duration-150 ${
                 isActive 
-                  ? 'text-indigo-650 dark:text-indigo-400 font-semibold' 
-                  : 'text-slate-400 dark:text-slate-500'
+                  ? 'text-indigo-650 dark:text-indigo-400 font-bold scale-105' 
+                  : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
               }`}
             >
-              <Icon size={20} />
+              <Icon size={20} className={isActive ? 'stroke-[2.5]' : ''} />
               <span className="text-[10px] tracking-tight">{item.name}</span>
               {item.badge && (
-                <span className={`absolute top-0.5 right-2 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white ${
+                <span className={`absolute top-0.5 right-1/4 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white shadow-xs ${
                   item.badge.type === 'danger' ? 'bg-rose-500 animate-pulse' : 'bg-indigo-650 dark:bg-indigo-500'
                 }`}>
                   {item.badge.count}
@@ -652,7 +714,174 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
             </button>
           );
         })}
+
+        {/* 5th Navigation Tab: More Drawer */}
+        <button
+          onClick={() => {
+            hapticLight();
+            setShowMobileMoreSheet(true);
+          }}
+          className={`relative flex-1 flex flex-col items-center gap-0.5 py-1 px-1 rounded-xl transition-all duration-150 ${
+            ['kanban', 'chat', 'settings'].includes(currentTab)
+              ? 'text-indigo-650 dark:text-indigo-400 font-bold scale-105' 
+              : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
+          }`}
+        >
+          <MoreHorizontal size={20} className={['kanban', 'chat', 'settings'].includes(currentTab) ? 'stroke-[2.5]' : ''} />
+          <span className="text-[10px] tracking-tight">More</span>
+          {unreadChatCount > 0 && (
+            <span className="absolute top-0.5 right-1/4 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-indigo-650 dark:bg-indigo-500 shadow-xs">
+              {unreadChatCount}
+            </span>
+          )}
+        </button>
       </nav>
+
+      {/* Mobile "More" Drawer Bottom Sheet */}
+      {showMobileMoreSheet && (
+        <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
+          {/* Backdrop */}
+          <div 
+            className="fixed inset-0 bg-slate-900/60 dark:bg-black/80 backdrop-blur-xs transition-opacity animate-in fade-in"
+            onClick={() => setShowMobileMoreSheet(false)}
+          />
+          {/* Sheet Body */}
+          <div className="relative z-10 bg-white dark:bg-brand-900 border-t border-slate-300 dark:border-slate-700 rounded-t-3xl p-5 pb-[calc(20px+env(safe-area-inset-bottom))] shadow-2xl animate-sheet-up space-y-4">
+            {/* Drag Handle */}
+            <div className="w-12 h-1.5 bg-slate-300 dark:bg-brand-700 rounded-full mx-auto -mt-1 mb-2 opacity-70" />
+            
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-brand-850">
+              <span className="text-sm font-extrabold text-slate-900 dark:text-white">
+                More Features
+              </span>
+              <button 
+                onClick={() => setShowMobileMoreSheet(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              {/* Projects (Kanban) */}
+              <button
+                onClick={() => {
+                  hapticLight();
+                  setCurrentTab('kanban');
+                  setShowMobileMoreSheet(false);
+                }}
+                className={`p-3.5 rounded-2xl border flex flex-col gap-2 text-left transition-all cursor-pointer ${
+                  currentTab === 'kanban'
+                    ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-800 text-indigo-950 dark:text-indigo-200 shadow-xs'
+                    : 'bg-slate-50 dark:bg-brand-850/60 border-slate-200 dark:border-brand-800 text-slate-800 dark:text-slate-200'
+                }`}
+              >
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <Columns size={18} />
+                </div>
+                <div>
+                  <span className="text-xs font-bold block">Projects</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">Kanban boards & goals</span>
+                </div>
+              </button>
+
+              {/* Chat */}
+              <button
+                onClick={() => {
+                  hapticLight();
+                  setCurrentTab('chat');
+                  setShowMobileMoreSheet(false);
+                }}
+                className={`relative p-3.5 rounded-2xl border flex flex-col gap-2 text-left transition-all cursor-pointer ${
+                  currentTab === 'chat'
+                    ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-800 text-indigo-950 dark:text-indigo-200 shadow-xs'
+                    : 'bg-slate-50 dark:bg-brand-850/60 border-slate-200 dark:border-brand-800 text-slate-800 dark:text-slate-200'
+                }`}
+              >
+                <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                  <MessageSquare size={18} />
+                </div>
+                <div>
+                  <span className="text-xs font-bold block">Partner Chat</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">Shared coordination</span>
+                </div>
+                {unreadChatCount > 0 && (
+                  <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-black shadow-xs">
+                    {unreadChatCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Settings */}
+              <button
+                onClick={() => {
+                  hapticLight();
+                  setCurrentTab('settings');
+                  setShowMobileMoreSheet(false);
+                }}
+                className={`p-3.5 rounded-2xl border flex flex-col gap-2 text-left transition-all cursor-pointer ${
+                  currentTab === 'settings'
+                    ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-800 text-indigo-950 dark:text-indigo-200 shadow-xs'
+                    : 'bg-slate-50 dark:bg-brand-850/60 border-slate-200 dark:border-brand-800 text-slate-800 dark:text-slate-200'
+                }`}
+              >
+                <div className="w-9 h-9 rounded-xl bg-slate-500/10 text-slate-600 dark:text-slate-400 flex items-center justify-center">
+                  <SettingsIcon size={18} />
+                </div>
+                <div>
+                  <span className="text-xs font-bold block">Settings</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">Colors & pairing</span>
+                </div>
+              </button>
+
+              {/* Quick Theme Toggle Card */}
+              <button
+                onClick={() => {
+                  hapticLight();
+                  toggleTheme();
+                }}
+                className="p-3.5 rounded-2xl border border-slate-200 dark:border-brand-800 bg-slate-50 dark:bg-brand-850/60 flex flex-col gap-2 text-left transition-all text-slate-800 dark:text-slate-200 cursor-pointer"
+              >
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                  {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                </div>
+                <div>
+                  <span className="text-xs font-bold block">{theme === 'dark' ? 'Light Theme' : 'Dark Theme'}</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">Tap to toggle</span>
+                </div>
+              </button>
+            </div>
+
+            {/* User profile & signout footer */}
+            <div className="pt-3 border-t border-slate-100 dark:border-brand-850 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div 
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shadow-inner" 
+                  style={{ backgroundColor: user?.avatarColor || '#64748b' }}
+                >
+                  {user?.avatarEmoji || '👤'}
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold leading-tight text-slate-900 dark:text-slate-100">{user?.name}</span>
+                  <span className="text-[10px] text-slate-400 truncate max-w-[170px]">{user?.email}</span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  hapticMedium();
+                  signOut();
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-bold transition-colors cursor-pointer"
+              >
+                <LogOut size={14} />
+                <span>Sign Out</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
     </div>
   );

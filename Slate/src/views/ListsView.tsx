@@ -7,6 +7,7 @@ import { EmptyState } from '../components/EmptyState';
 import { LoadingSkeleton } from '../components/LoadingSkeleton';
 import { useToast } from '../components/Toast';
 import { compressImage } from '../utils/imageCompressor';
+import { hapticSuccess, hapticLight, hapticMedium } from '../utils/haptics';
 
 const CATEGORIES = [
   { name: 'Produce', emoji: '🍎', color: '#10b981' }, // green
@@ -29,9 +30,15 @@ export const ListsView: React.FC = () => {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState<Record<string, boolean>>({});
 
+  const handleToggleItem = async (itemId: string) => {
+    hapticSuccess();
+    await toggleItemComplete(itemId);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!itemName.trim()) return;
+    hapticMedium();
     await addItem(itemName, selectedCategory, createPhoto || undefined);
     showToast(`Added "${itemName}" to your list`, 'success');
     setItemName('');
@@ -92,7 +99,7 @@ export const ListsView: React.FC = () => {
     <div className="max-w-4xl mx-auto space-y-6">
       
       {/* Quick Add Form */}
-      <div className="bg-white dark:bg-brand-900 border border-slate-200 dark:border-brand-800 rounded-3xl p-6 shadow-sm animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-brand-900 border border-slate-300 dark:border-slate-800 rounded-3xl p-6 shadow-sm animate-in fade-in duration-200">
         <div className="flex items-center gap-2 mb-4">
           <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
             <ShoppingCart size={18} />
@@ -103,12 +110,13 @@ export const ListsView: React.FC = () => {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="flex gap-2.5">
             <input
+              id="slate-grocery-input"
               type="text"
               value={itemName}
               onChange={e => setItemName(e.target.value)}
               placeholder="e.g. Milk, Bananas, Toilet paper..."
               required
-              className="flex-1 px-4 py-3 bg-slate-50 dark:bg-brand-950 border border-slate-200 dark:border-brand-800 rounded-xl text-sm focus:outline-none text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-slate-200 dark:focus:ring-brand-850"
+              className="flex-1 px-4 py-3 bg-slate-50 dark:bg-brand-950 border border-slate-300 dark:border-slate-700 rounded-xl text-sm focus:outline-none text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500/20"
             />
             <Button
               type="submit"
@@ -127,8 +135,11 @@ export const ListsView: React.FC = () => {
                 <button
                   type="button"
                   key={cat.name}
-                  onClick={() => setSelectedCategory(cat.name)}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border shrink-0 ${
+                  onClick={() => {
+                    hapticLight();
+                    setSelectedCategory(cat.name);
+                  }}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border shrink-0 cursor-pointer ${
                     isSelected
                       ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-black dark:border-white shadow-sm'
                       : 'bg-slate-50 text-slate-650 border-slate-200 dark:bg-brand-950/50 dark:text-slate-400 dark:border-brand-800 hover:bg-slate-100 dark:hover:bg-brand-800'
@@ -216,11 +227,11 @@ export const ListsView: React.FC = () => {
                       {catItems.map(item => (
                         <div
                           key={item.id}
-                          className="bg-white dark:bg-brand-900 border border-slate-200 dark:border-brand-800 rounded-2xl p-4 shadow-sm hover:border-slate-350 dark:hover:border-brand-700 transition-all flex justify-between items-center group animate-in fade-in slide-in-from-bottom-2 duration-200"
+                          className="bg-white dark:bg-brand-900 border border-slate-300 dark:border-slate-800 rounded-2xl p-4 shadow-sm hover:border-slate-400 dark:hover:border-slate-700 transition-all flex justify-between items-center group animate-in fade-in slide-in-from-bottom-2 duration-200 card-interactive"
                         >
                           <div className="flex items-center gap-3.5 flex-1 min-w-0">
                             <div
-                              onClick={() => toggleItemComplete(item.id)}
+                              onClick={() => handleToggleItem(item.id)}
                               className="flex items-center gap-3.5 flex-1 min-w-0 cursor-pointer"
                             >
                               <button className="text-slate-400 group-hover:text-indigo-500 transition-colors shrink-0">
@@ -308,7 +319,7 @@ export const ListsView: React.FC = () => {
                   >
                     <div className="flex items-center gap-3.5 flex-1 min-w-0">
                       <div
-                        onClick={() => toggleItemComplete(item.id)}
+                        onClick={() => handleToggleItem(item.id)}
                         className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer"
                       >
                         <button className="text-emerald-500 shrink-0">

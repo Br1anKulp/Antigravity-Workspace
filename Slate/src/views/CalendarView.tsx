@@ -15,7 +15,6 @@ import { CalendarGrid } from '../components/Calendar/CalendarGrid';
 import { ScheduleView } from '../components/Calendar/ScheduleView';
 import { DayDetailModal } from '../components/Calendar/DayDetailModal';
 import { EventModal } from '../components/Calendar/EventModal';
-import { Plus } from 'lucide-react';
 
 
 export const CalendarView: React.FC = () => {
@@ -346,16 +345,6 @@ export const CalendarView: React.FC = () => {
           onDelete={handleDelete}
         />
       </div>
-
-      {/* Android Mobile Floating Action Button (1.B) */}
-      <button
-        type="button"
-        onClick={() => openCreateModal(selectedDate)}
-        aria-label="Add Event"
-        className="sm:hidden fixed bottom-20 right-4 z-40 w-13 h-13 rounded-full bg-indigo-650 hover:bg-indigo-550 active:scale-90 text-white shadow-xl shadow-indigo-600/30 flex items-center justify-center cursor-pointer transition-all border-2 border-white/20"
-      >
-        <Plus size={24} className="stroke-[2.5]" />
-      </button>
     </div>
   );
 };
