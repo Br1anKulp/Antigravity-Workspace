@@ -3,7 +3,6 @@ import { useAuthStore } from './store/authStore';
 import { useCalendarStore } from './store/calendarStore';
 import { useTasksStore } from './store/tasksStore';
 import { useNotesStore } from './store/notesStore';
-import { useKanbanStore } from './store/kanbanStore';
 import { useNotificationStore } from './store/notificationStore';
 import { useChatStore } from './store/chatStore';
 import { useListsStore } from './store/listsStore';
@@ -15,7 +14,6 @@ import { LoginView } from './views/LoginView';
 import { CalendarView } from './views/CalendarView';
 import { TasksView } from './views/TasksView';
 import { NotesView } from './views/NotesView';
-import { KanbanView } from './views/KanbanView';
 import { ChatView } from './views/ChatView';
 import { SettingsView } from './views/SettingsView';
 import { ListsView } from './views/ListsView';
@@ -39,12 +37,12 @@ function App() {
   const undoDelete = useNotesStore((s) => s.undoDelete);
   const clearLastDeletedNote = useNotesStore((s) => s.clearLastDeletedNote);
 
-  const subscribeKanban = useKanbanStore((s) => s.subscribeKanban);
   const subscribeMessages = useChatStore((s) => s.subscribeMessages);
   const subscribeLists = useListsStore((s) => s.subscribeItems);
 
   const [currentTab, setCurrentTab] = useState<string>(() => {
-    return localStorage.getItem('slate_active_tab') || 'calendar';
+    const saved = localStorage.getItem('slate_active_tab');
+    return (saved && saved !== 'kanban') ? saved : 'calendar';
   });
 
   // Automatically clear lastDeletedNote after 10 seconds
@@ -117,7 +115,6 @@ function App() {
     const unsubEvents = subscribeEvents();
     const unsubTasks = subscribeTasks();
     const unsubNotes = subscribeNotes();
-    const unsubKanban = subscribeKanban();
     const unsubMessages = subscribeMessages();
     const unsubLists = subscribeLists();
 
@@ -129,11 +126,10 @@ function App() {
       unsubEvents();
       unsubTasks();
       unsubNotes();
-      unsubKanban();
       unsubMessages();
       unsubLists();
     };
-  }, [uid, updateProfile, subscribeNotifications, subscribeEvents, subscribeTasks, subscribeNotes, subscribeKanban, subscribeMessages, subscribeLists]);
+  }, [uid, updateProfile, subscribeNotifications, subscribeEvents, subscribeTasks, subscribeNotes, subscribeMessages, subscribeLists]);
 
   if (authLoading) {
     return (
@@ -169,11 +165,6 @@ function App() {
         {currentTab === 'notes' && (
           <ErrorBoundary fallbackTitle="Shared notes failed to load">
             <NotesView />
-          </ErrorBoundary>
-        )}
-        {currentTab === 'kanban' && (
-          <ErrorBoundary fallbackTitle="Kanban board failed to load">
-            <KanbanView />
           </ErrorBoundary>
         )}
         {currentTab === 'chat' && (

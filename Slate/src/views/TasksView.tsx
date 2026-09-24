@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTasksStore } from '../store/tasksStore';
 import type { TaskItem } from '../store/tasksStore';
-import { useKanbanStore } from '../store/kanbanStore';
 import { useCalendarStore } from '../store/calendarStore';
 import { useAuthStore } from '../store/authStore';
 import { compressImage } from '../utils/imageCompressor';
@@ -13,7 +12,6 @@ import {
   CheckCircle2, 
   AlertTriangle,
   Clock,
-  ArrowRightLeft,
   Paperclip
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
@@ -39,7 +37,6 @@ export const TasksView: React.FC = () => {
     uploadProgress
   } = useTasksStore();
 
-  const { addCard, activeBoardId } = useKanbanStore();
   const { addEvent } = useCalendarStore();
   const { user } = useAuthStore();
 
@@ -260,28 +257,6 @@ export const TasksView: React.FC = () => {
 
     await updateTask(task.id, { linkedEventId: 'linked' });
     showToast('Task has been linked to the calendar!', 'success');
-  };
-
-  // Promote to Kanban Board Card
-  const handlePromoteToKanban = async (task: TaskItem) => {
-    if (!activeBoardId) {
-      showToast('Please initialize a Kanban Board in the Kanban section first.', 'error');
-      return;
-    }
-
-    await addCard({
-      columnId: 'col-todo', // first column
-      boardId: activeBoardId,
-      title: task.title,
-      description: task.description,
-      assignee: task.assignee,
-      dueDate: task.dueDate,
-      priority: task.priority,
-      tags: task.tags
-    });
-
-    await updateTask(task.id, { isKanbanCard: true });
-    showToast('Task has been successfully promoted to a Kanban card!', 'success');
   };
 
   // Filter Logic
@@ -525,15 +500,6 @@ export const TasksView: React.FC = () => {
                         title="Link to Calendar"
                       >
                         <Calendar size={14} />
-                      </button>
-                    )}
-                    {!task.isKanbanCard && (
-                      <button
-                        onClick={() => handlePromoteToKanban(task)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-slate-50 dark:hover:bg-brand-800 transition-colors"
-                        title="Promote to Kanban Card"
-                      >
-                        <ArrowRightLeft size={14} />
                       </button>
                     )}
                     <button

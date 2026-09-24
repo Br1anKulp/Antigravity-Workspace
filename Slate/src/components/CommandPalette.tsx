@@ -5,7 +5,6 @@ import {
   CheckSquare, 
   ShoppingCart, 
   FileText, 
-  Columns, 
   MessageSquare, 
   Settings, 
   Moon, 
@@ -103,17 +102,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       icon: FileText,
       action: () => {
         setCurrentTab('notes');
-        onClose();
-      }
-    },
-    {
-      id: 'nav-kanban',
-      title: 'Projects & Kanban',
-      category: 'Navigation',
-      subtitle: 'Track goals and milestones',
-      icon: Columns,
-      action: () => {
-        setCurrentTab('kanban');
         onClose();
       }
     },

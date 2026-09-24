@@ -25,14 +25,12 @@ import {
   AlertTriangle,
   CheckCircle2,
   Menu,
-  ChevronLeft,
-  ChevronRight,
   Plus,
   ChevronDown,
   Search,
   MoreHorizontal
 } from 'lucide-react';
-import { addDays, subDays, addMonths, subMonths, setMonth, setYear } from 'date-fns';
+import { setMonth, setYear } from 'date-fns';
 import { isMockMode } from '../firebase/config';
 import { useListsStore } from '../store/listsStore';
 import { CAL_PALETTE } from '../utils/constants';
@@ -202,7 +200,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
     { id: 'tasks', name: 'Tasks', icon: CheckSquare, badge: overdueTasksCount > 0 ? { count: overdueTasksCount, type: 'danger' } : undefined },
     { id: 'lists', name: 'Lists', icon: ShoppingCart, badge: activeListItemsCount > 0 ? { count: activeListItemsCount, type: 'primary' } : undefined },
     { id: 'notes', name: 'Notes', icon: FileText },
-    { id: 'kanban', name: 'Projects', icon: Columns },
     { id: 'chat', name: 'Chat', icon: MessageSquare, badge: unreadChatCount > 0 ? { count: unreadChatCount, type: 'primary' } : undefined },
     { id: 'settings', name: 'Settings', icon: SettingsIcon },
   ];
@@ -380,41 +377,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
               )}
             </div>
 
-            {/* Stepper Controls & Add Event Button */}
+            {/* Desktop-only Add Event Button (Mobile uses floating action button) */}
             {currentTab === 'calendar' && (
-              <div className="flex items-center gap-1.5 shrink-0 ml-auto sm:ml-1">
-                {/* Stepper Arrows */}
-                <div className="flex items-center border border-slate-200 dark:border-brand-800 rounded-xl overflow-hidden shadow-2xs bg-slate-50/50 dark:bg-brand-950">
-                  <button 
-                    onClick={() => {
-                      if (activeView === 'Day') setSelectedDate(subDays(selectedDate, 1));
-                      else if (activeView === '4-Day') setSelectedDate(subDays(selectedDate, 7));
-                      else if (activeView === '2-Week') setSelectedDate(subDays(selectedDate, 14));
-                      else setSelectedDate(subMonths(selectedDate, 1));
-                    }} 
-                    aria-label="Previous Period"
-                    className="p-1 sm:p-1.5 hover:bg-slate-100 dark:hover:bg-brand-850 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
-                  >
-                    <ChevronLeft size={15} />
-                  </button>
-                  <button 
-                    onClick={() => {
-                      if (activeView === 'Day') setSelectedDate(addDays(selectedDate, 1));
-                      else if (activeView === '4-Day') setSelectedDate(addDays(selectedDate, 7));
-                      else if (activeView === '2-Week') setSelectedDate(addDays(selectedDate, 14));
-                      else setSelectedDate(addMonths(selectedDate, 1));
-                    }} 
-                    aria-label="Next Period"
-                    className="p-1 sm:p-1.5 hover:bg-slate-100 dark:hover:bg-brand-850 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
-                  >
-                    <ChevronRight size={15} />
-                  </button>
-                </div>
-
-                {/* Desktop-only Add Event Button (Mobile uses floating action button) */}
+              <div className="hidden sm:flex items-center shrink-0 ml-auto sm:ml-1">
                 <button
                   onClick={() => setShowCreateEventModal(true)}
-                  className="hidden sm:flex items-center gap-1 px-2.5 sm:px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 rounded-xl text-xs font-extrabold shadow-xs transition-all cursor-pointer shrink-0"
+                  className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 rounded-xl text-xs font-extrabold shadow-xs transition-all cursor-pointer shrink-0"
                 >
                   <Plus size={14} />
                   <span>Event</span>
@@ -758,12 +726,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
             setShowMobileMoreSheet(true);
           }}
           className={`relative flex-1 flex flex-col items-center gap-0.5 py-1 px-1 rounded-xl transition-all duration-150 ${
-            ['kanban', 'chat', 'settings'].includes(currentTab)
+            ['chat', 'settings'].includes(currentTab)
               ? 'text-indigo-650 dark:text-indigo-400 font-bold scale-105' 
               : 'text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
           }`}
         >
-          <MoreHorizontal size={20} className={['kanban', 'chat', 'settings'].includes(currentTab) ? 'stroke-[2.5]' : ''} />
+          <MoreHorizontal size={20} className={['chat', 'settings'].includes(currentTab) ? 'stroke-[2.5]' : ''} />
           <span className="text-[10px] tracking-tight">More</span>
           {unreadChatCount > 0 && (
             <span className="absolute top-0.5 right-1/4 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold text-white bg-indigo-650 dark:bg-indigo-500 shadow-xs">
@@ -824,28 +792,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              {/* Projects (Kanban) */}
-              <button
-                onClick={() => {
-                  hapticLight();
-                  setCurrentTab('kanban');
-                  setShowMobileMoreSheet(false);
-                }}
-                className={`p-3.5 rounded-2xl border flex flex-col gap-2 text-left transition-all cursor-pointer ${
-                  currentTab === 'kanban'
-                    ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-800 text-indigo-950 dark:text-indigo-200 shadow-xs'
-                    : 'bg-slate-50 dark:bg-brand-850/60 border-slate-200 dark:border-brand-800 text-slate-800 dark:text-slate-200'
-                }`}
-              >
-                <div className="w-9 h-9 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-                  <Columns size={18} />
-                </div>
-                <div>
-                  <span className="text-xs font-bold block">Projects</span>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500">Kanban boards & goals</span>
-                </div>
-              </button>
-
               {/* Chat */}
               <button
                 onClick={() => {
@@ -853,22 +799,24 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
                   setCurrentTab('chat');
                   setShowMobileMoreSheet(false);
                 }}
-                className={`relative p-3.5 rounded-2xl border flex flex-col gap-2 text-left transition-all cursor-pointer ${
+                className={`col-span-2 relative p-4 rounded-2xl border flex items-center justify-between transition-all cursor-pointer ${
                   currentTab === 'chat'
                     ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-300 dark:border-indigo-800 text-indigo-950 dark:text-indigo-200 shadow-xs'
                     : 'bg-slate-50 dark:bg-brand-850/60 border-slate-200 dark:border-brand-800 text-slate-800 dark:text-slate-200'
                 }`}
               >
-                <div className="w-9 h-9 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center">
-                  <MessageSquare size={18} />
-                </div>
-                <div>
-                  <span className="text-xs font-bold block">Partner Chat</span>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500">Shared coordination</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                    <MessageSquare size={20} />
+                  </div>
+                  <div>
+                    <span className="text-sm font-bold block">Partner Chat</span>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500">Shared couple messaging</span>
+                  </div>
                 </div>
                 {unreadChatCount > 0 && (
-                  <span className="absolute top-3 right-3 px-2 py-0.5 rounded-full bg-rose-500 text-white text-[9px] font-black shadow-xs">
-                    {unreadChatCount}
+                  <span className="px-2.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-black shadow-xs shrink-0">
+                    {unreadChatCount} new
                   </span>
                 )}
               </button>
