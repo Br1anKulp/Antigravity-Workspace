@@ -91,6 +91,9 @@ const CalendarGridComponent = ({
     };
   };
 
+  // Day borders: lighter on dark mode (#52525b), darker on light mode (#94a3b8)
+  const gridBorderColor = isDarkMode ? '#52525b' : '#94a3b8';
+
   const [touchStartX, setTouchStartX] = React.useState<number | null>(null);
   const [touchStartY, setTouchStartY] = React.useState<number | null>(null);
 
@@ -144,14 +147,14 @@ const CalendarGridComponent = ({
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
-        <div className="bg-white dark:bg-brand-900 rounded-3xl border border-slate-200 dark:border-brand-800 overflow-hidden shadow-sm flex flex-col animate-in fade-in duration-200">
+        <div className="bg-white dark:bg-brand-900 rounded-3xl border border-slate-300 dark:border-slate-700 overflow-hidden shadow-sm flex flex-col animate-in fade-in duration-200">
           {/* Day header row */}
-          <div className="grid grid-cols-7 border-b border-slate-100 dark:border-brand-850 text-center py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
+          <div className="grid grid-cols-7 border-b border-slate-300 dark:border-slate-700 text-center py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
             {dayLabels.map(l => <div key={l}>{l}</div>)}
           </div>
           
           {/* Days Grid */}
-          <div className="flex flex-col flex-1 divide-y divide-slate-200 dark:divide-brand-800">
+          <div className="flex flex-col flex-1 divide-y divide-slate-300 dark:divide-slate-700">
             {weeks.map((week, weekIdx) => {
               const weekEvents = expanded.filter(e => week.some(day => isEventOnDay(e, day)));
               
@@ -244,17 +247,14 @@ const CalendarGridComponent = ({
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1 sm:mb-1.5">
-                            <span className={`text-[10px] sm:text-[11px] font-black rounded-full transition-all flex items-center justify-center ${
+                            <span className={`text-[10px] sm:text-[11px] font-black rounded-full w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center transition-all shrink-0 ${
                               isToday(day) 
-                                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 px-2 py-0.5 scale-105' 
+                                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 ring-2 ring-indigo-300 dark:ring-indigo-400 scale-105' 
                                 : isSameDay(day, selectedDate)
-                                ? 'text-indigo-650 dark:text-indigo-400 font-black px-1.5'
-                                : 'text-slate-650 dark:text-slate-350 px-1.5'
+                                ? 'text-indigo-650 dark:text-indigo-400 font-black'
+                                : 'text-slate-650 dark:text-slate-350'
                             }`}>
-                              <span>{format(day, 'd')}</span>
-                              {isToday(day) && (
-                                <span className="text-[7.5px] font-black tracking-wider uppercase ml-1 opacity-95">Today</span>
-                              )}
+                              {format(day, 'd')}
                             </span>
                             {/* Feature 1.C: Density Indicator Dots */}
                             {(() => {
@@ -281,8 +281,8 @@ const CalendarGridComponent = ({
                     })}
                   </div>
 
-                  {/* Foreground Events grid overlay */}
-                  <div className="grid absolute inset-0 pt-6 sm:pt-7 md:pt-9 pb-1 gap-y-0.5 md:gap-y-1 px-0.5 md:px-1.5 pointer-events-none grid-cols-7 w-full h-full">
+                  {/* Foreground Events grid overlay (gap-y-0 eliminates vertical gaps between pills) */}
+                  <div className="grid absolute inset-0 pt-6 sm:pt-7 md:pt-9 pb-1 gap-y-0 px-0.5 md:px-1.5 pointer-events-none grid-cols-7 w-full h-full">
                     {sortedWeekEvents.map(e => {
                       const trackIdx = eventToTrack.get(e.id + '_' + e.start);
                       if (trackIdx === undefined || trackIdx >= 3) return null;
@@ -366,16 +366,16 @@ const CalendarGridComponent = ({
                     className="absolute inset-0 grid grid-cols-7 pointer-events-none"
                     style={{
                       zIndex: 10,
-                      borderTop: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`,
-                      borderLeft: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`
+                      borderTop: `1px solid ${gridBorderColor}`,
+                      borderLeft: `1px solid ${gridBorderColor}`
                     }}
                   >
                     {week.map((_, i) => (
                       <div
                         key={i}
                         style={{
-                          borderRight: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`,
-                          borderBottom: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`
+                          borderRight: `1px solid ${gridBorderColor}`,
+                          borderBottom: `1px solid ${gridBorderColor}`
                         }}
                       />
                     ))}
@@ -406,14 +406,14 @@ const CalendarGridComponent = ({
 
     return (
       <div className="flex flex-col gap-4">
-        <div className="bg-white dark:bg-brand-900 rounded-3xl border border-slate-200 dark:border-brand-800 overflow-hidden shadow-sm flex flex-col animate-in fade-in duration-200">
+        <div className="bg-white dark:bg-brand-900 rounded-3xl border border-slate-300 dark:border-slate-700 overflow-hidden shadow-sm flex flex-col animate-in fade-in duration-200">
           {/* Day header row */}
-          <div className="grid grid-cols-7 border-b border-slate-100 dark:border-brand-850 text-center py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500">
+          <div className="grid grid-cols-7 border-b border-slate-300 dark:border-slate-700 text-center py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
             {dayLabels.map(l => <div key={l}>{l}</div>)}
           </div>
           
           {/* Days Grid */}
-          <div className="flex flex-col flex-1 divide-y divide-slate-200 dark:divide-brand-800">
+          <div className="flex flex-col flex-1 divide-y divide-slate-300 dark:divide-slate-700">
             {weeks.map((week, weekIdx) => {
               const weekEvents = expanded.filter(e => week.some(day => isEventOnDay(e, day)));
               
@@ -506,17 +506,14 @@ const CalendarGridComponent = ({
                           }`}
                         >
                           <div className="flex items-center justify-between mb-1.5">
-                            <span className={`text-[10px] md:text-[11px] font-black rounded-full transition-all flex items-center justify-center ${
+                            <span className={`text-[10px] md:text-[11px] font-black rounded-full w-5 h-5 md:w-6 md:h-6 flex items-center justify-center transition-all shrink-0 ${
                               isToday(day) 
-                                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 px-2 py-0.5 scale-105' 
+                                ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 scale-105' 
                                 : isSameDay(day, selectedDate)
-                                ? 'text-indigo-650 dark:text-indigo-400 font-black px-1.5'
-                                : 'text-slate-650 dark:text-slate-350 px-1.5'
+                                ? 'text-indigo-650 dark:text-indigo-400 font-black'
+                                : 'text-slate-650 dark:text-slate-350'
                             }`}>
-                              <span>{format(day, 'd')}</span>
-                              {isToday(day) && (
-                                <span className="text-[7.5px] font-black tracking-wider uppercase ml-1 opacity-95">Today</span>
-                              )}
+                              {format(day, 'd')}
                             </span>
                             {/* Feature 1.C: Density Indicator Dots */}
                             {(() => {
@@ -543,8 +540,8 @@ const CalendarGridComponent = ({
                     })}
                   </div>
 
-                  {/* Foreground Events grid overlay (responsive spacing/grid) */}
-                  <div className="grid absolute inset-0 pt-7 md:pt-9 pb-1 gap-y-0.5 md:gap-y-1.5 px-0.5 md:px-1.5 pointer-events-none grid-cols-7 w-full h-full">
+                  {/* Foreground Events grid overlay (gap-y-0 eliminates vertical gaps between pills) */}
+                  <div className="grid absolute inset-0 pt-7 md:pt-9 pb-1 gap-y-0 px-0.5 md:px-1.5 pointer-events-none grid-cols-7 w-full h-full">
                     {sortedWeekEvents.map(e => {
                       const trackIdx = eventToTrack.get(e.id + '_' + e.start);
                       if (trackIdx === undefined || trackIdx >= 3) return null;
@@ -628,16 +625,16 @@ const CalendarGridComponent = ({
                     className="absolute inset-0 grid grid-cols-7 pointer-events-none"
                     style={{
                       zIndex: 10,
-                      borderTop: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`,
-                      borderLeft: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`
+                      borderTop: `1px solid ${gridBorderColor}`,
+                      borderLeft: `1px solid ${gridBorderColor}`
                     }}
                   >
                     {week.map((_, i) => (
                       <div
                         key={i}
                         style={{
-                          borderRight: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`,
-                          borderBottom: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`
+                          borderRight: `1px solid ${gridBorderColor}`,
+                          borderBottom: `1px solid ${gridBorderColor}`
                         }}
                       />
                     ))}
@@ -717,9 +714,9 @@ const CalendarGridComponent = ({
     });
 
     return (
-      <div className="bg-white dark:bg-brand-900 rounded-3xl border border-slate-200 dark:border-brand-800 overflow-hidden shadow-sm flex flex-col animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-brand-900 rounded-3xl border border-slate-300 dark:border-slate-700 overflow-hidden shadow-sm flex flex-col animate-in fade-in duration-200">
         {/* Day header row */}
-        <div className="grid border-b border-slate-100 dark:border-brand-850 text-center py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500"
+        <div className="grid border-b border-slate-300 dark:border-slate-700 text-center py-2.5 text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400"
           style={{ gridTemplateColumns: `repeat(${daysCount}, minmax(0, 1fr))` }}
         >
           {days.map(day => (
@@ -732,7 +729,7 @@ const CalendarGridComponent = ({
         {/* Days Grid Content */}
         <div className="relative min-h-[220px] flex flex-col">
           {/* Background grid */}
-          <div className="absolute inset-0 grid border-t border-l border-slate-200 dark:border-brand-800" style={{ gridTemplateColumns: `repeat(${daysCount}, minmax(0, 1fr))` }}>
+          <div className="absolute inset-0 grid border-t border-l border-slate-300 dark:border-slate-700" style={{ gridTemplateColumns: `repeat(${daysCount}, minmax(0, 1fr))` }}>
             {days.map((day) => {
               return (
                 <div
@@ -750,7 +747,7 @@ const CalendarGridComponent = ({
                       onEventDrop(eventId, day);
                     }
                   }}
-                  className={`flex border-r border-b border-slate-200 dark:border-brand-800 p-1.5 md:p-2.5 min-h-[120px] hover:bg-slate-50/50 dark:hover:bg-brand-850/10 cursor-pointer flex-col transition-colors ${
+                  className={`flex border-r border-b border-slate-300 dark:border-slate-700 p-1.5 md:p-2.5 min-h-[120px] hover:bg-slate-50/50 dark:hover:bg-brand-850/10 cursor-pointer flex-col transition-colors ${
                     isToday(day) 
                       ? 'bg-indigo-50/90 dark:bg-indigo-950/50 ring-2 ring-inset ring-indigo-500 dark:ring-indigo-400' 
                       : isSameDay(day, selectedDate)
@@ -759,17 +756,14 @@ const CalendarGridComponent = ({
                   }`}
                 >
                   <div className="flex justify-start mb-1.5">
-                    <span className={`text-[10px] md:text-[11px] font-black rounded-full transition-all flex items-center justify-center ${
+                    <span className={`text-[10px] md:text-[11px] font-black rounded-full w-5 h-5 md:w-6 md:h-6 flex items-center justify-center transition-all shrink-0 ${
                       isToday(day) 
-                        ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 px-2 py-0.5 scale-105' 
+                        ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 scale-105' 
                         : isSameDay(day, selectedDate)
-                        ? 'text-indigo-650 dark:text-indigo-400 font-black px-1.5'
-                        : 'text-slate-650 dark:text-slate-350 px-1.5'
+                        ? 'text-indigo-650 dark:text-indigo-400 font-black'
+                        : 'text-slate-650 dark:text-slate-350'
                     }`}>
-                      <span>{format(day, 'd')}</span>
-                      {isToday(day) && (
-                        <span className="text-[7.5px] font-black tracking-wider uppercase ml-1 opacity-95">Today</span>
-                      )}
+                      {format(day, 'd')}
                     </span>
                   </div>
                 </div>
@@ -777,8 +771,8 @@ const CalendarGridComponent = ({
             })}
           </div>
 
-          {/* Foreground Events grid overlay (responsive spacing/grid) */}
-          <div className="grid absolute inset-0 pt-7 md:pt-9 pb-1 gap-y-0.5 md:gap-y-1.5 px-0.5 md:px-1.5 pointer-events-none w-full h-full"
+          {/* Foreground Events grid overlay (gap-y-0 eliminates vertical gaps between pills) */}
+          <div className="grid absolute inset-0 pt-7 md:pt-9 pb-1 gap-y-0 px-0.5 md:px-1.5 pointer-events-none w-full h-full"
             style={{ gridTemplateColumns: `repeat(${daysCount}, minmax(0, 1fr))` }}
           >
             {sortedEvents.map(e => {
@@ -870,16 +864,16 @@ const CalendarGridComponent = ({
               zIndex: 10,
               display: 'grid',
               gridTemplateColumns: `repeat(${daysCount}, minmax(0, 1fr))`,
-              borderTop: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`,
-              borderLeft: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`
+              borderTop: `1px solid ${gridBorderColor}`,
+              borderLeft: `1px solid ${gridBorderColor}`
             }}
           >
             {days.map((_, i) => (
               <div
                 key={i}
                 style={{
-                  borderRight: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`,
-                  borderBottom: `1px solid ${isDarkMode ? '#262626' : '#e2e8f0'}`
+                  borderRight: `1px solid ${gridBorderColor}`,
+                  borderBottom: `1px solid ${gridBorderColor}`
                 }}
               />
             ))}
@@ -941,10 +935,10 @@ const CalendarGridComponent = ({
     });
 
     return (
-      <div className="bg-white dark:bg-brand-900 rounded-3xl border border-slate-200 dark:border-brand-800 overflow-hidden shadow-sm flex flex-col h-[650px] animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-brand-900 rounded-3xl border border-slate-300 dark:border-slate-700 overflow-hidden shadow-sm flex flex-col h-[650px] animate-in fade-in duration-200">
         
         {/* Calendar top columns */}
-        <div className="grid border-b border-slate-200 dark:border-brand-800 bg-slate-50/50 dark:bg-brand-950/20 py-3 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 sticky top-0 z-10"
+        <div className="grid border-b border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-brand-950/20 py-3 text-center text-xs font-semibold text-slate-500 dark:text-slate-400 sticky top-0 z-10"
           style={{ gridTemplateColumns: `80px repeat(${daysCount}, minmax(0, 1fr))` }}
         >
           <div>Time</div>
@@ -969,10 +963,10 @@ const CalendarGridComponent = ({
         </div>
 
         {/* All-Day Events row */}
-        <div className="grid border-b border-slate-100 dark:border-brand-850 bg-slate-50/20 py-2 text-center text-xs font-semibold text-slate-500 dark:text-slate-400"
+        <div className="grid border-b border-slate-300 dark:border-slate-700 bg-slate-50/20 py-2 text-center text-xs font-semibold text-slate-500 dark:text-slate-400"
           style={{ gridTemplateColumns: `80px 1fr` }}
         >
-          <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider flex items-center justify-center border-r border-slate-100 dark:border-brand-850">
+          <div className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider flex items-center justify-center border-r border-slate-300 dark:border-slate-700">
             All Day
           </div>
           
@@ -980,12 +974,12 @@ const CalendarGridComponent = ({
             {/* Background day columns */}
             <div className="absolute inset-0 grid" style={{ gridTemplateColumns: `repeat(${daysCount}, minmax(0, 1fr))` }}>
               {days.map((d) => (
-                <div key={d.toString()} className="border-r border-slate-100 dark:border-brand-850 last:border-r-0 h-full" />
+                <div key={d.toString()} className="border-r border-slate-300 dark:border-slate-700 last:border-r-0 h-full" />
               ))}
             </div>
 
             {/* Foreground Overlay Grid for continuous events */}
-            <div className="relative grid p-1 gap-y-1 w-full h-full pointer-events-none" style={{ gridTemplateColumns: `repeat(${daysCount}, minmax(0, 1fr))` }}>
+            <div className="relative grid p-1 gap-y-0 w-full h-full pointer-events-none" style={{ gridTemplateColumns: `repeat(${daysCount}, minmax(0, 1fr))` }}>
               {sortedAllDay.map(e => {
                 const trackIdx = allDayEventToTrack.get(e.id + '_' + e.start);
                 if (trackIdx === undefined) return null;
@@ -1026,7 +1020,7 @@ const CalendarGridComponent = ({
         </div>
 
         {/* Calendar hourly scrollable area */}
-        <div className="flex-1 overflow-y-auto no-scrollbar divide-y divide-slate-100 dark:divide-brand-850">
+        <div className="flex-1 overflow-y-auto no-scrollbar divide-y divide-slate-300 dark:divide-slate-700">
           {hours.map(h => {
             const timeStr = `${h.toString().padStart(2, '0')}:00`;
             return (
@@ -1034,12 +1028,12 @@ const CalendarGridComponent = ({
                 key={h}
                 className="grid"
                 style={{ 
-                  gridTemplateColumns: `80px repeat(${daysCount}, minmax(0, 1fr))`,
+                  gridTemplateColumns: `80px repeat(${daysCount}, minmax(0, 1fr))` ,
                   minHeight: '60px'
                 }}
               >
                 {/* Time cell */}
-                <div className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold flex items-center justify-center border-r border-slate-100 dark:border-brand-850 bg-slate-50/10">
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold flex items-center justify-center border-r border-slate-300 dark:border-slate-700 bg-slate-50/10">
                   {format(new Date(`2000-01-01T${timeStr}`), 'h a')}
                 </div>
 
@@ -1054,7 +1048,7 @@ const CalendarGridComponent = ({
                     <div
                       key={d.toString()}
                       onClick={() => openCreateModal(d, timeStr)}
-                      className="border-r border-slate-100 dark:border-brand-850 p-1 relative hover:bg-slate-50/40 dark:hover:bg-brand-850/10 transition-colors cursor-pointer group"
+                      className="border-r border-slate-300 dark:border-slate-700 p-1 relative hover:bg-slate-50/40 dark:hover:bg-brand-850/10 transition-colors cursor-pointer group"
                     >
                       {/* Feature 2.A: Live Current Time Indicator */}
                       {isToday(d) && now.getHours() === h && (

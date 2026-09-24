@@ -47,7 +47,7 @@ export const CalendarSidebar: React.FC<CalendarSidebarProps> = ({
       </button>
 
       {/* Mini Calendar Picker Card */}
-      <div className="bg-white dark:bg-brand-900 border border-slate-200 dark:border-brand-800 rounded-2xl p-4 shadow-2xs">
+      <div className="bg-white dark:bg-brand-900 border border-slate-300 dark:border-slate-700 rounded-2xl p-4 shadow-2xs">
         <div className="flex items-center justify-between mb-3 px-1">
           <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100">
             {format(pickerDate, 'MMMM yyyy')}

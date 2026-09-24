@@ -7,7 +7,7 @@ interface CalendarHeaderProps {
   selectedDate: Date;
   handlePrev: () => void;
   handleNext: () => void;
-  handleToday: () => void;
+  handleToday?: () => void;
   openCreateModal: (date: Date) => void;
 }
 
@@ -15,7 +15,6 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
   selectedDate,
   handlePrev,
   handleNext,
-  handleToday,
   openCreateModal
 }) => {
   const partner = useAuthStore(state => state.partner);
@@ -41,7 +40,7 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
   return (
     <div className="flex flex-col gap-4">
       {/* Top Main Navigation Bar */}
-      <div className="bg-white dark:bg-brand-900 border border-slate-200 dark:border-brand-800 rounded-2xl p-3 sm:p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 transition-colors">
+      <div className="bg-white dark:bg-brand-900 border border-slate-300 dark:border-slate-700 rounded-2xl p-3 sm:p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 transition-colors">
         
         {/* Date Title, Stepper, and Add Event Button Row */}
         <div className="flex flex-wrap items-center justify-between gap-2.5 w-full">
@@ -67,20 +66,14 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {/* Prev / Today / Next Stepper */}
-            <div className="flex items-center border border-slate-200 dark:border-brand-800 rounded-xl overflow-hidden shadow-xs bg-slate-50/50 dark:bg-brand-950">
+            {/* Prev / Next Stepper */}
+            <div className="flex items-center border border-slate-300 dark:border-slate-700 rounded-xl overflow-hidden shadow-xs bg-slate-50/50 dark:bg-brand-950 divide-x divide-slate-300 dark:divide-slate-700">
               <button 
                 onClick={handlePrev} 
                 aria-label="Previous Period"
                 className="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-brand-850 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
               >
                 <ChevronLeft size={16} />
-              </button>
-              <button 
-                onClick={handleToday} 
-                className="px-2.5 sm:px-3 py-1 sm:py-1.5 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-brand-850 border-x border-slate-200 dark:border-brand-800 transition-colors cursor-pointer"
-              >
-                Today
               </button>
               <button 
                 onClick={handleNext} 
@@ -91,10 +84,10 @@ export const CalendarHeader: React.FC<CalendarHeaderProps> = ({
               </button>
             </div>
 
-            {/* Primary Action + Add Event Button right beside selector */}
+            {/* Primary Action + Add Event Button - hidden on mobile since floating button is present */}
             <button
               onClick={() => openCreateModal(selectedDate)}
-              className="flex items-center gap-1 px-3 sm:px-4 py-1.5 sm:py-2 bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer shrink-0"
+              className="hidden sm:flex items-center gap-1 px-3 sm:px-4 py-1.5 sm:py-2 bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer shrink-0"
             >
               <Plus size={15} />
               <span>Event</span>
