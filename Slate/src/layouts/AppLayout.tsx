@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuthStore } from '../store/authStore';
 import { useNotificationStore } from '../store/notificationStore';
@@ -90,6 +90,42 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showMobileMoreSheet, setShowMobileMoreSheet] = useState(false);
+  const [moreDragY, setMoreDragY] = useState(0);
+  const [isDraggingMore, setIsDraggingMore] = useState(false);
+  const moreTouchStartY = useRef(0);
+  const currentMoreDragY = useRef(0);
+
+  const handleMoreTouchStart = (e: React.TouchEvent) => {
+    moreTouchStartY.current = e.touches[0].clientY;
+    currentMoreDragY.current = 0;
+    setIsDraggingMore(true);
+  };
+
+  const handleMoreTouchMove = (e: React.TouchEvent) => {
+    if (!isDraggingMore && moreTouchStartY.current === 0) return;
+    const currentY = e.touches[0].clientY;
+    const delta = currentY - moreTouchStartY.current;
+    if (delta > 0) {
+      if (e.cancelable) e.preventDefault();
+      currentMoreDragY.current = delta;
+      setMoreDragY(delta);
+    } else {
+      currentMoreDragY.current = 0;
+      setMoreDragY(0);
+    }
+  };
+
+  const handleMoreTouchEnd = () => {
+    setIsDraggingMore(false);
+    if (currentMoreDragY.current > 60) {
+      hapticLight();
+      setShowMobileMoreSheet(false);
+    }
+    setMoreDragY(0);
+    currentMoreDragY.current = 0;
+    moreTouchStartY.current = 0;
+  };
+
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [lastReadChat, setLastReadChat] = useState<string>(localStorage.getItem('slate_last_read_chat') || new Date(0).toISOString());
 
@@ -746,20 +782,45 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
             onClick={() => setShowMobileMoreSheet(false)}
           />
           {/* Sheet Body */}
-          <div className="relative z-10 bg-white dark:bg-brand-900 border-t border-slate-300 dark:border-slate-700 rounded-t-3xl p-5 pb-[calc(20px+env(safe-area-inset-bottom))] shadow-2xl animate-sheet-up space-y-4">
-            {/* Drag Handle */}
-            <div className="w-12 h-1.5 bg-slate-300 dark:bg-brand-700 rounded-full mx-auto -mt-1 mb-2 opacity-70" />
-            
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-brand-850">
-              <span className="text-sm font-extrabold text-slate-900 dark:text-white">
-                More Features
-              </span>
-              <button 
-                onClick={() => setShowMobileMoreSheet(false)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+          <div 
+            style={{
+              transform: moreDragY > 0 ? `translateY(${moreDragY}px)` : undefined,
+              transition: isDraggingMore ? 'none' : 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+            className="relative z-10 bg-white dark:bg-brand-900 border-t border-slate-300 dark:border-slate-700 rounded-t-3xl p-5 pb-[calc(20px+env(safe-area-inset-bottom))] shadow-2xl animate-sheet-up space-y-4 overscroll-contain"
+          >
+            {/* Top Drag Header with touch-action: none to block pull-to-refresh */}
+            <div
+              className="touch-none select-none -mt-2"
+              onTouchStart={handleMoreTouchStart}
+              onTouchMove={handleMoreTouchMove}
+              onTouchEnd={handleMoreTouchEnd}
+            >
+              {/* Drag Handle */}
+              <div 
+                onClick={() => {
+                  if (currentMoreDragY.current < 5) setShowMobileMoreSheet(false);
+                }}
+                className="w-full py-2 flex justify-center items-center cursor-pointer mb-1 active:opacity-75"
               >
-                <X size={18} />
-              </button>
+                <div className="w-12 h-1.5 bg-slate-300 dark:bg-brand-700 rounded-full opacity-70" />
+              </div>
+              
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-brand-850">
+                <span className="text-sm font-extrabold text-slate-900 dark:text-white">
+                  More Features
+                </span>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowMobileMoreSheet(false);
+                  }}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

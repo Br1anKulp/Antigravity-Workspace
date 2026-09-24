@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import { format, startOfDay, endOfDay, parseISO } from 'date-fns';
 import { Calendar, Plus } from 'lucide-react';
 import type { CalendarEvent } from '../../store/calendarStore';
 import { useAuthStore } from '../../store/authStore';
+import { hapticLight } from '../../utils/haptics';
 
 interface DayDetailModalProps {
   isOpen: boolean;
@@ -24,10 +25,45 @@ export const DayDetailModal: React.FC<DayDetailModalProps> = ({
   openEditModal
 }) => {
   const { user } = useAuthStore();
+  const [dragY, setDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const touchStartY = useRef(0);
+  const currentDragY = useRef(0);
 
   if (!isOpen) return null;
 
   const dayEvents = getFilteredEvents(startOfDay(selectedDate), endOfDay(selectedDate));
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+    currentDragY.current = 0;
+    setIsDragging(true);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging && touchStartY.current === 0) return;
+    const currentY = e.touches[0].clientY;
+    const delta = currentY - touchStartY.current;
+    if (delta > 0) {
+      if (e.cancelable) e.preventDefault();
+      currentDragY.current = delta;
+      setDragY(delta);
+    } else {
+      currentDragY.current = 0;
+      setDragY(0);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    setIsDragging(false);
+    if (currentDragY.current > 60) {
+      hapticLight();
+      onClose();
+    }
+    setDragY(0);
+    currentDragY.current = 0;
+    touchStartY.current = 0;
+  };
 
   return (
     <div 
@@ -36,28 +72,50 @@ export const DayDetailModal: React.FC<DayDetailModalProps> = ({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full sm:max-w-2xl bg-white dark:bg-brand-900 border-t sm:border border-slate-200 dark:border-brand-800 rounded-t-3xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
-        {/* Mobile Drag Handle */}
+      <div 
+        style={{
+          transform: dragY > 0 ? `translateY(${dragY}px)` : undefined,
+          transition: isDragging ? 'none' : 'transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+        }}
+        className="w-full sm:max-w-2xl bg-white dark:bg-brand-900 border-t sm:border border-slate-200 dark:border-brand-800 rounded-t-3xl sm:rounded-3xl p-4 sm:p-6 shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 flex flex-col max-h-[85vh] overscroll-contain"
+      >
+        {/* Mobile Drag Header Zone with touch-action: none to block pull-to-refresh */}
         <div 
-          onClick={onClose}
-          className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto mb-3 sm:hidden cursor-pointer active:scale-95 transition-transform" 
-        />
-
-        <div className="flex justify-between items-center mb-3 sm:mb-4 border-b border-slate-150 dark:border-brand-850 pb-2.5 sm:pb-3">
-          <div>
-            <h3 className="text-[10px] font-extrabold text-slate-400 dark:text-slate-550 uppercase tracking-widest">
-              Selected Day Overview
-            </h3>
-            <h2 className="text-base sm:text-lg font-black text-slate-800 dark:text-slate-100 mt-0.5">
-              {format(selectedDate, 'EEEE, MMMM d, yyyy')}
-            </h2>
-          </div>
-          <button 
-            onClick={onClose}
-            className="text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-200 dark:border-brand-800 hover:bg-slate-50 dark:hover:bg-brand-850 text-slate-700 dark:text-slate-350 cursor-pointer"
+          className="touch-none select-none"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+          {/* Mobile Drag Handle */}
+          <div 
+            onClick={() => {
+              if (currentDragY.current < 5) onClose();
+            }}
+            className="w-full py-2 flex justify-center items-center cursor-pointer -mt-2 mb-1 sm:hidden active:opacity-75 transition-opacity" 
           >
-            Close
-          </button>
+            <div className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 active:scale-95 transition-transform" />
+          </div>
+
+          <div className="flex justify-between items-center mb-3 sm:mb-4 border-b border-slate-150 dark:border-brand-850 pb-2.5 sm:pb-3">
+            <div>
+              <h3 className="text-[10px] font-extrabold text-slate-400 dark:text-slate-550 uppercase tracking-widest">
+                Selected Day Overview
+              </h3>
+              <h2 className="text-base sm:text-lg font-black text-slate-800 dark:text-slate-100 mt-0.5">
+                {format(selectedDate, 'EEEE, MMMM d, yyyy')}
+              </h2>
+            </div>
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+              onTouchStart={(e) => e.stopPropagation()}
+              className="text-xs font-bold px-3 py-1.5 rounded-lg border border-slate-200 dark:border-brand-800 hover:bg-slate-50 dark:hover:bg-brand-850 text-slate-700 dark:text-slate-350 cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-3 pr-1 no-scrollbar my-2">
