@@ -1,4 +1,4 @@
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuthStore } from './store/authStore';
 import { useCalendarStore } from './store/calendarStore';
 import { useTasksStore } from './store/tasksStore';
@@ -9,18 +9,16 @@ import { useChatStore } from './store/chatStore';
 import { useListsStore } from './store/listsStore';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { LoadingSkeleton } from './components/LoadingSkeleton';
 import { AppLayout } from './layouts/AppLayout';
 import { LoginView } from './views/LoginView';
 
-// Lazy load each view to split bundle chunks
-const CalendarView = lazy(() => import('./views/CalendarView').then(m => ({ default: m.CalendarView })));
-const TasksView = lazy(() => import('./views/TasksView').then(m => ({ default: m.TasksView })));
-const NotesView = lazy(() => import('./views/NotesView').then(m => ({ default: m.NotesView })));
-const KanbanView = lazy(() => import('./views/KanbanView').then(m => ({ default: m.KanbanView })));
-const ChatView = lazy(() => import('./views/ChatView').then(m => ({ default: m.ChatView })));
-const SettingsView = lazy(() => import('./views/SettingsView').then(m => ({ default: m.SettingsView })));
-const ListsView = lazy(() => import('./views/ListsView').then(m => ({ default: m.ListsView })));
+import { CalendarView } from './views/CalendarView';
+import { TasksView } from './views/TasksView';
+import { NotesView } from './views/NotesView';
+import { KanbanView } from './views/KanbanView';
+import { ChatView } from './views/ChatView';
+import { SettingsView } from './views/SettingsView';
+import { ListsView } from './views/ListsView';
 
 function App() {
   const user = useAuthStore((s) => s.user);
@@ -155,51 +153,37 @@ function App() {
       <AppLayout currentTab={currentTab} setCurrentTab={setCurrentTab}>
         {currentTab === 'calendar' && (
           <ErrorBoundary fallbackTitle="Calendar failed to load">
-            <Suspense fallback={<LoadingSkeleton type="calendar" />}>
-              <CalendarView />
-            </Suspense>
+            <CalendarView />
           </ErrorBoundary>
         )}
         {currentTab === 'tasks' && (
           <ErrorBoundary fallbackTitle="Tasks checklist failed to load">
-            <Suspense fallback={<LoadingSkeleton type="list" />}>
-              <TasksView />
-            </Suspense>
+            <TasksView />
           </ErrorBoundary>
         )}
         {currentTab === 'lists' && (
           <ErrorBoundary fallbackTitle="Shared lists failed to load">
-            <Suspense fallback={<LoadingSkeleton type="list" />}>
-              <ListsView />
-            </Suspense>
+            <ListsView />
           </ErrorBoundary>
         )}
         {currentTab === 'notes' && (
           <ErrorBoundary fallbackTitle="Shared notes failed to load">
-            <Suspense fallback={<LoadingSkeleton type="list" rows={3} />}>
-              <NotesView />
-            </Suspense>
+            <NotesView />
           </ErrorBoundary>
         )}
         {currentTab === 'kanban' && (
           <ErrorBoundary fallbackTitle="Kanban board failed to load">
-            <Suspense fallback={<LoadingSkeleton type="kanban" />}>
-              <KanbanView />
-            </Suspense>
+            <KanbanView />
           </ErrorBoundary>
         )}
         {currentTab === 'chat' && (
           <ErrorBoundary fallbackTitle="Shared chat failed to load">
-            <Suspense fallback={<LoadingSkeleton type="card" />}>
-              <ChatView />
-            </Suspense>
+            <ChatView />
           </ErrorBoundary>
         )}
         {currentTab === 'settings' && (
           <ErrorBoundary fallbackTitle="Settings failed to load">
-            <Suspense fallback={<LoadingSkeleton type="card" />}>
-              <SettingsView />
-            </Suspense>
+            <SettingsView />
           </ErrorBoundary>
         )}
       </AppLayout>

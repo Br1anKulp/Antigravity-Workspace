@@ -29,6 +29,23 @@ export class ErrorBoundary extends Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     this.setState({ errorInfo });
     console.error("Uncaught error captured by ErrorBoundary:", error, errorInfo);
+
+    // If a deployment caused stale chunk 404 or dynamically imported module failure, auto-reload once to refresh cache
+    const errMsg = (error?.message || '').toLowerCase();
+    const isChunkOrScriptError = 
+      errMsg.includes('dynamically imported module') ||
+      errMsg.includes('failed to fetch') ||
+      errMsg.includes('loading chunk') ||
+      errMsg.includes('unexpected token \'<\'');
+
+    if (isChunkOrScriptError) {
+      const lastReload = sessionStorage.getItem('slate_chunk_reload');
+      const now = Date.now();
+      if (!lastReload || now - parseInt(lastReload, 10) > 15000) {
+        sessionStorage.setItem('slate_chunk_reload', now.toString());
+        window.location.reload();
+      }
+    }
   }
 
   private handleReset = () => {
