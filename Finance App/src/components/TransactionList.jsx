@@ -1,11 +1,22 @@
-import React, { useState } from 'react'
-import { ArrowUpRight, ArrowDownRight, Tag, Calendar, Search, Filter, Trash2, Pencil, Download, CreditCard, Clock, List, LayoutGrid } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowUpRight, ArrowDownRight, Tag, Calendar, Search, Filter, Trash2, Pencil, Download, CreditCard, Clock, List } from 'lucide-react'
 import CalendarView from './CalendarView'
+
+const formatDateSafe = (dateStr) => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('T')[0].split('-');
+  if (parts.length === 3) {
+    const [y, m, d] = parts.map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString();
+  }
+  return new Date(dateStr).toLocaleDateString();
+};
 
 export default function TransactionList({ transactions, onDelete, onEditRequest, onUpdateTransaction, categories = [], selectedMonth }) {
   const [searchTerm, setSearchTerm] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('All')
   const [viewMode, setViewMode] = useState('list')
+  const [expandedRowId, setExpandedRowId] = useState(null)
 
   if (transactions.length === 0) {
     return (
@@ -30,8 +41,8 @@ export default function TransactionList({ transactions, onDelete, onEditRequest,
     
     const headers = ['Date', 'Title', 'Amount', 'Type', 'Category', 'Subcategory', 'User'];
     const rows = filteredTransactions.map(t => [
-      new Date(t.date).toLocaleDateString(),
-      `"${t.title.replace(/"/g, '""')}"`,
+      formatDateSafe(t.date),
+      `"${(t.title || '').replace(/"/g, '""')}"`,
       t.amount,
       t.type,
       `"${t.category}"`,
@@ -48,6 +59,7 @@ export default function TransactionList({ transactions, onDelete, onEditRequest,
     link.setAttribute("download", `good_steward_transactions_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
+    URL.revokeObjectURL(url);
     document.body.removeChild(link);
   };
 
@@ -123,8 +135,10 @@ export default function TransactionList({ transactions, onDelete, onEditRequest,
             padding: '16px 24px',
             borderBottom: '1px solid var(--border)',
             transition: 'background-color 0.2s',
-            position: 'relative'
+            position: 'relative',
+            cursor: 'pointer'
           }}
+          onClick={() => setExpandedRowId(prev => prev === t.id ? null : t.id)}
           onMouseOver={e => {
             e.currentTarget.style.backgroundColor = 'var(--bg-surface)';
             const actions = e.currentTarget.querySelector('.tx-actions');
@@ -138,12 +152,12 @@ export default function TransactionList({ transactions, onDelete, onEditRequest,
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
               <div style={{ 
-                background: t.type === 'income' ? 'var(--success-bg)' : 'var(--danger-bg)',
-                color: t.type === 'income' ? 'var(--success)' : 'var(--danger)',
+                background: (t.type === 'income' || t.type === 'refund') ? 'var(--success-bg)' : 'var(--danger-bg)',
+                color: (t.type === 'income' || t.type === 'refund') ? 'var(--success)' : 'var(--danger)',
                 padding: '12px',
                 borderRadius: '50%'
               }}>
-                {t.type === 'income' ? <ArrowUpRight size={24} /> : <ArrowDownRight size={24} />}
+                {(t.type === 'income' || t.type === 'refund') ? <ArrowUpRight size={24} /> : <ArrowDownRight size={24} />}
               </div>
               
               <div style={{ flex: 1 }}>
@@ -159,7 +173,8 @@ export default function TransactionList({ transactions, onDelete, onEditRequest,
                       </span>
                       <button
                         type="button"
-                        onClick={() => onUpdateTransaction && onUpdateTransaction(t.id, { ...t, status: 'paid' })}
+                        className="mark-paid-btn"
+                        onClick={(e) => { e.stopPropagation(); onUpdateTransaction && onUpdateTransaction(t.id, { ...t, status: 'paid' }); }}
                         style={{ background: 'var(--success-bg)', color: 'var(--success)', border: 'none', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold', transition: 'transform 0.2s' }}
                         title="Mark as Paid"
                         onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.15)'}
@@ -188,7 +203,7 @@ export default function TransactionList({ transactions, onDelete, onEditRequest,
                     </span>
                   )}
                   <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Calendar size={12} /> {new Date(t.date).toLocaleDateString()}
+                    <Calendar size={12} /> {formatDateSafe(t.date)}
                   </span>
                   {t.user && <span>• By {t.user.split('@')[0]}</span>}
                 </div>
@@ -204,15 +219,15 @@ export default function TransactionList({ transactions, onDelete, onEditRequest,
               <div style={{ 
                 fontWeight: '600', 
                 fontSize: '1.1rem',
-                color: t.type === 'income' ? 'var(--success)' : 'var(--text-primary)'
+                color: (t.type === 'income' || t.type === 'refund') ? 'var(--success)' : 'var(--text-primary)'
               }}>
-                {t.type === 'income' ? '+' : '-'}${parseFloat(t.amount).toFixed(2)}
+                {(t.type === 'income' || t.type === 'refund') ? '+' : '-'}${parseFloat(t.amount).toFixed(2)}
               </div>
               
-              <div className="tx-actions" style={{ display: 'flex', gap: '8px', opacity: 0, transition: 'opacity 0.2s' }}>
+              <div className="tx-actions" style={{ display: 'flex', gap: '8px', opacity: expandedRowId === t.id ? 1 : 0, transition: 'opacity 0.2s' }}>
                 <button 
                   className="btn btn-ghost btn-icon" 
-                  onClick={() => onEditRequest && onEditRequest(t)}
+                  onClick={(e) => { e.stopPropagation(); onEditRequest && onEditRequest(t); }}
                   style={{ padding: '6px', color: 'var(--text-secondary)' }}
                   title="Edit Transaction"
                 >
@@ -220,7 +235,7 @@ export default function TransactionList({ transactions, onDelete, onEditRequest,
                 </button>
                 <button 
                   className="btn btn-ghost btn-icon" 
-                  onClick={() => onDelete && onDelete(t.id)}
+                  onClick={(e) => { e.stopPropagation(); onDelete && onDelete(t.id); }}
                   style={{ padding: '6px', color: 'var(--danger)' }}
                   title="Delete Transaction"
                 >

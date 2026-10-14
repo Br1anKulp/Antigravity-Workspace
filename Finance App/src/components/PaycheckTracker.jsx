@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { Banknote, Pencil, Check, X, ChevronDown } from 'lucide-react'
 import { doc, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
@@ -58,8 +58,10 @@ export default function PaycheckTracker({ budgets, user, householdId, selectedMo
 
           if (dueDays.length === 0) return // hidden — no due date
 
-          const limit = parseFloat(subData.limit) || 0
           dueDays.forEach(day => {
+            const limit = (typeof subData.limit === 'object' && subData.limit !== null)
+              ? (parseFloat(subData.limit[day]) || 0)
+              : (parseFloat(subData.limit) || 0);
             const bill = {
               cat,
               name: dueDays.length > 1 ? `${subName} (${day}${getOrdinal(day)})` : subName,

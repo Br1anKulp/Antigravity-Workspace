@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react'
-import { Plus, Trash2, Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { Trash2, Calendar, ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react'
 import { doc, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 
@@ -21,14 +21,16 @@ function TransactionDatePicker({ value, onChange, selectedMonth, singleSelect })
     return parseInt(m);
   });
 
-  // Sync viewed month when the parent's selectedMonth changes
-  useEffect(() => {
+  const [prevSelectedMonth, setPrevSelectedMonth] = useState(selectedMonth);
+
+  if (selectedMonth !== prevSelectedMonth) {
+    setPrevSelectedMonth(selectedMonth);
     if (selectedMonth) {
       const [y, m] = selectedMonth.split('-');
       setViewYear(parseInt(y));
       setViewMonth(parseInt(m));
     }
-  }, [selectedMonth]);
+  }
 
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June', 
@@ -93,7 +95,7 @@ function TransactionDatePicker({ value, onChange, selectedMonth, singleSelect })
 
   const formatReadableDate = (dateStr) => {
     if (!dateStr) return '';
-    const [y, m, d] = dateStr.split('-');
+    const [, m, d] = dateStr.split('-');
     const mName = monthNames[parseInt(m) - 1]?.slice(0, 3);
     return `${mName} ${parseInt(d)}`;
   };
@@ -141,7 +143,7 @@ function TransactionDatePicker({ value, onChange, selectedMonth, singleSelect })
               marginTop: '6px', 
               padding: '14px', 
               zIndex: 1001, 
-              width: '280px', 
+              width: 'min(280px, calc(100vw - 48px))', 
               boxShadow: 'var(--shadow-lg)',
               border: 'var(--border) 1px solid',
               background: 'var(--bg-surface)',
@@ -274,8 +276,24 @@ function TransactionDatePicker({ value, onChange, selectedMonth, singleSelect })
   );
 }
 
+const mapPaymentMethod = (pm) => {
+  if (!pm) return 'Navy Federal Checking';
+  const lower = pm.toLowerCase();
+  if (lower.includes('chase')) return 'Visa';
+  if (lower.includes('visa')) return 'Visa';
+  if (lower.includes('capital one')) return 'Capital One';
+  if (lower.includes('american express') || lower.includes('amex')) return 'American Express';
+  if (lower.includes('checking') || lower.includes('navy federal')) return 'Navy Federal Checking';
+  return pm;
+};
+
 export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, customCategories, selectedMonth }) {
-  const [isOpen, setIsOpen] = useState(false)
+  const formRef = useRef(null)
+  const amountInputRef = useRef(null)
+  const [isOpen, setIsOpen] = useState(() => {
+    return typeof window !== 'undefined' && window.innerWidth <= 768;
+  })
+  const [successToast, setSuccessToast] = useState(null)
   const [editingId, setEditingId] = useState(null)
   
   const [formData, setFormData] = useState({
@@ -287,27 +305,23 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
     isRecurring: false,
     dates: [new Date().toISOString().split('T')[0]],
     status: 'paid',
-    paymentMethod: 'Checking Account',
+    paymentMethod: 'Navy Federal Checking',
     notes: ''
   })
 
   // Split transaction states
   const [isSplit, setIsSplit] = useState(false)
-  const [splits, setSplits] = useState([{ category: '', subcategory: '', amount: '', notes: '' }])
+  const [splits, setSplits] = useState([{ category: '', subcategory: '', amount: '', notes: '', date: new Date().toISOString().split('T')[0] }])
   const [bankTxId, setBankTxId] = useState(null)
+  const [plaidTransactionId, setPlaidTransactionId] = useState(null)
 
-  // Clear subcategory when category changes so user must select one
-  useEffect(() => {
-    setFormData(prev => ({
-      ...prev,
-      subcategory: ''
-    }))
-  }, [formData.category])
 
   // Listen for edit and prefill requests
   useEffect(() => {
     const handleEdit = (e) => {
       const tx = e.detail;
+      const mappedPM = mapPaymentMethod(tx.paymentMethod);
+      const txDateStr = tx.date.split('T')[0];
       setFormData({
         title: tx.title,
         amount: tx.amount,
@@ -316,27 +330,39 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
         type: tx.type,
         isRecurring: tx.isRecurring || false,
         status: tx.status || 'paid',
-        paymentMethod: tx.paymentMethod || 'Checking Account',
+        paymentMethod: mappedPM,
         notes: tx.notes || '',
-        dates: [tx.date.split('T')[0]] // Assuming YYYY-MM-DD
+        dates: [txDateStr] // Assuming YYYY-MM-DD
       });
       
       if (tx.splits && tx.splits.length > 0) {
         setIsSplit(true);
-        setSplits(tx.splits.map(s => ({ category: s.category || tx.category, subcategory: s.subcategory, amount: String(s.amount), notes: s.notes || '' })));
+        setSplits(tx.splits.map(s => ({ 
+          category: s.category || tx.category, 
+          subcategory: s.subcategory, 
+          amount: String(s.amount), 
+          notes: s.notes || '',
+          date: s.date || txDateStr
+        })));
       } else {
         setIsSplit(false);
-        setSplits([{ category: '', subcategory: '', amount: '', notes: '' }]);
+        setSplits([{ category: '', subcategory: '', amount: '', notes: '', date: txDateStr }]);
       }
       
       setEditingId(tx.id);
       setBankTxId(null); // Clear bank link ID
+      setPlaidTransactionId(tx.plaidTransactionId || null);
       setIsOpen(true);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(() => {
+        formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
     };
 
     const handlePrefill = (e) => {
+      console.log("prefill-transaction event received in TransactionForm:", e.detail);
       const tx = e.detail;
+      const mappedPM = mapPaymentMethod(tx.paymentMethod);
+      const isChecking = mappedPM === 'Navy Federal Checking';
       setFormData({
         title: tx.title,
         amount: tx.amount,
@@ -344,45 +370,89 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
         subcategory: '', // Force selection
         type: 'expense',
         isRecurring: false,
-        status: 'paid',
-        paymentMethod: tx.paymentMethod || 'Checking Account',
+        status: isChecking ? 'paid' : 'unpaid',
+        paymentMethod: mappedPM,
         notes: tx.notes || '',
         dates: [tx.date]
       });
       setIsSplit(false);
-      setSplits([{ category: '', subcategory: '', amount: '', notes: '' }]);
+      setSplits([{ category: '', subcategory: '', amount: '', notes: '', date: tx.date }]);
       setEditingId(null);
       setBankTxId(tx.bankTxId || null); // Save the bank transaction id to delete it later
+      setPlaidTransactionId(tx.plaidTransactionId || null);
       setIsOpen(true);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(() => {
+        formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    };
+
+    const handlePrefillCategory = (e) => {
+      console.log("prefill-category event received in TransactionForm:", e.detail);
+      const { category, subcategory } = e.detail;
+      const todayStr = new Date().toISOString().split('T')[0];
+      setFormData({
+        title: '',
+        amount: '',
+        category: category || '',
+        subcategory: subcategory || '',
+        type: 'expense',
+        isRecurring: false,
+        status: 'paid',
+        paymentMethod: 'Navy Federal Checking',
+        notes: '',
+        dates: [todayStr]
+      });
+      setIsSplit(false);
+      setSplits([{ category: '', subcategory: '', amount: '', notes: '', date: todayStr }]);
+      setEditingId(null);
+      setBankTxId(null);
+      setPlaidTransactionId(null);
+      setIsOpen(true);
+      setTimeout(() => {
+        formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
+    };
+
+    const handleOpenForm = () => {
+      setIsOpen(true);
+      setTimeout(() => {
+        formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        amountInputRef.current?.focus();
+      }, 100);
     };
 
     document.addEventListener('edit-transaction', handleEdit);
     document.addEventListener('prefill-transaction', handlePrefill);
+    document.addEventListener('prefill-category', handlePrefillCategory);
+    document.addEventListener('open-transaction-form', handleOpenForm);
     return () => {
       document.removeEventListener('edit-transaction', handleEdit);
       document.removeEventListener('prefill-transaction', handlePrefill);
+      document.removeEventListener('prefill-category', handlePrefillCategory);
+      document.removeEventListener('open-transaction-form', handleOpenForm);
     };
   }, []);
 
   const resetForm = () => {
+    const todayStr = new Date().toISOString().split('T')[0];
     setFormData({ 
       title: '', 
       amount: '', 
       category: '', // Start empty to show placeholder
       subcategory: '', // Start empty to show placeholder
       isRecurring: false,
-      dates: [new Date().toISOString().split('T')[0]],
+      dates: [todayStr],
       type: 'expense',
       status: 'paid',
-      paymentMethod: 'Checking Account',
+      paymentMethod: 'Navy Federal Checking',
       notes: ''
     });
     setIsSplit(false);
-    setSplits([{ category: '', subcategory: '', amount: '', notes: '' }]);
+    setSplits([{ category: '', subcategory: '', amount: '', notes: '', date: todayStr }]);
     setEditingId(null);
     setBankTxId(null);
-    setIsOpen(false);
+    setPlaidTransactionId(null);
+    setIsOpen(typeof window !== 'undefined' && window.innerWidth <= 768);
   }
 
   const splitsSum = isSplit ? splits.reduce((sum, s) => sum + (parseFloat(s.amount) || 0), 0) : 0;
@@ -393,24 +463,33 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
     if (!formData.title || !formData.amount) return
     if (isSplit && !isSumMatching) return;
 
-    const txDataTemplate = {
-      ...formData,
-      amount: parseFloat(formData.amount),
-      category: formData.type === 'income' ? 'Income' : (isSplit ? (splits[0]?.category || 'Split') : formData.category),
-      subcategory: formData.type === 'income' ? '' : (isSplit ? 'Split' : formData.subcategory),
-      splits: isSplit ? splits.map(s => ({ category: s.category, subcategory: s.subcategory, amount: parseFloat(s.amount) || 0, notes: (s.notes || '').trim() })) : null,
-      notes: formData.notes.trim()
-    };
-    delete txDataTemplate.dates; // Remove the array from the payload
+    const uniqueDates = isSplit ? [...new Set(splits.map(s => s.date || formData.dates[0]))] : [];
+    const hasMultipleDates = uniqueDates.length > 1;
 
-    if (editingId && onUpdate) {
-      // If editing, we only update the single transaction with the first date
-      onUpdate(editingId, { ...txDataTemplate, date: new Date(formData.dates[0] + 'T12:00:00').toISOString() });
-    } else {
-      // Add a separate transaction for every date selected
-      formData.dates.forEach(d => {
-        onAdd({ ...txDataTemplate, date: new Date(d + 'T12:00:00').toISOString(), id: crypto.randomUUID() });
+    if (isSplit && hasMultipleDates) {
+      // Create separate transactions for each split
+      splits.forEach(s => {
+        onAdd({
+          title: `${formData.title} (Split)`,
+          amount: parseFloat(s.amount) || 0,
+          type: formData.type,
+          category: s.category || formData.category,
+          subcategory: s.subcategory,
+          date: new Date((s.date || formData.dates[0]) + 'T12:00:00').toISOString(),
+          status: formData.status,
+          paymentMethod: formData.paymentMethod,
+          notes: (s.notes || '').trim() || formData.notes.trim(),
+          isRecurring: false,
+          plaidTransactionId: plaidTransactionId || null
+        });
       });
+
+      // If editing, delete original transaction
+      if (editingId && onUpdate) {
+        deleteDoc(doc(db, 'transactions', editingId)).catch(err => {
+          console.error("Error deleting original transaction after splitting by date:", err);
+        });
+      }
 
       // If imported from bank feed, delete it from pending list
       if (bankTxId) {
@@ -418,17 +497,80 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
           console.error("Error deleting synced bank transaction after review:", err);
         });
       }
+    } else {
+      // Normal single transaction or splits sharing the same date
+      const txDataTemplate = {
+        ...formData,
+        amount: parseFloat(formData.amount),
+        category: formData.type === 'income' ? 'Income' : (isSplit ? (splits[0]?.category || 'Split') : formData.category),
+        subcategory: formData.type === 'income' ? '' : (isSplit ? 'Split' : formData.subcategory),
+        splits: isSplit ? splits.map(s => ({ 
+          category: s.category, 
+          subcategory: s.subcategory, 
+          amount: parseFloat(s.amount) || 0, 
+          notes: (s.notes || '').trim(),
+          date: s.date || formData.dates[0]
+        })) : null,
+        notes: formData.notes.trim(),
+        plaidTransactionId: plaidTransactionId || null
+      };
+      delete txDataTemplate.dates; // Remove the array from the payload
+
+      if (editingId && onUpdate) {
+        onUpdate(editingId, { ...txDataTemplate, date: new Date(formData.dates[0] + 'T12:00:00').toISOString() });
+      } else {
+        formData.dates.forEach(d => {
+          onAdd({ ...txDataTemplate, date: new Date(d + 'T12:00:00').toISOString(), id: crypto.randomUUID() });
+        });
+
+        if (bankTxId) {
+          deleteDoc(doc(db, 'bank_transactions', bankTxId)).catch(err => {
+            console.error("Error deleting synced bank transaction after review:", err);
+          });
+        }
+      }
     }
+
+    const submittedTitle = formData.title || 'Transaction';
+    const submittedAmount = parseFloat(formData.amount) || 0;
+    setSuccessToast(`Logged "${submittedTitle}" ($${submittedAmount.toFixed(2)})`);
+    setTimeout(() => {
+      setSuccessToast(null);
+    }, 3500);
 
     resetForm();
   }
 
   const handleCancel = () => {
-    resetForm();
+    setIsOpen(false);
+    const todayStr = new Date().toISOString().split('T')[0];
+    setFormData({ 
+      title: '', 
+      amount: '', 
+      category: '',
+      subcategory: '',
+      isRecurring: false,
+      dates: [todayStr],
+      type: 'expense',
+      status: 'paid',
+      paymentMethod: 'Navy Federal Checking',
+      notes: ''
+    });
+    setIsSplit(false);
+    setSplits([{ category: '', subcategory: '', amount: '', notes: '', date: todayStr }]);
+    setEditingId(null);
+    setBankTxId(null);
+    setPlaidTransactionId(null);
   }
 
   const handleAddSplit = () => {
-    setSplits(prev => [...prev, { category: formData.category, subcategory: '', amount: '', notes: '' }]);
+    setSplits(prev => [...prev, { 
+      category: formData.category, 
+      subcategory: '', 
+      amount: '', 
+      notes: '', 
+      date: formData.dates[0] || new Date().toISOString().split('T')[0] 
+    }]);
   }
 
   const handleRemoveSplit = (idx) => {
@@ -441,7 +583,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
 
   if (!isOpen) {
     return (
-      <div style={{ textAlign: 'center', marginTop: '32px' }}>
+      <div ref={formRef} className="tx-form-collapsed" style={{ textAlign: 'center' }}>
         <button className="btn btn-primary" onClick={() => setIsOpen(true)}>
           + Add Transaction
         </button>
@@ -450,11 +592,31 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
   }
 
   return (
-    <div className="glass-panel" style={{ padding: '24px', marginTop: '32px' }}>
+    <div ref={formRef} className="glass-panel tx-form-container" style={{ padding: '24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h3 style={{ margin: 0 }}>{editingId ? 'Edit Transaction' : 'New Transaction'}</h3>
         <button className="btn btn-ghost" onClick={handleCancel}>Cancel</button>
       </div>
+
+      {successToast && (
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '8px', 
+          padding: '10px 14px', 
+          borderRadius: '8px', 
+          background: 'rgba(34, 197, 94, 0.15)', 
+          border: '1px solid var(--success)', 
+          color: 'var(--success)', 
+          fontSize: '0.9rem', 
+          fontWeight: '500', 
+          marginBottom: '16px',
+          animation: 'fadeIn 0.2s ease-out'
+        }}>
+          <CheckCircle2 size={18} />
+          <span>{successToast}</span>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} autoComplete="off" style={{ display: 'grid', gap: '16px' }}>
         <div style={{ display: 'flex', gap: '12px' }}>
@@ -472,6 +634,13 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
           >
             Income
           </button>
+          <button 
+            type="button"
+            style={{ flex: 1, padding: '12px', borderRadius: '8px', border: '1px solid var(--primary)', background: formData.type === 'refund' ? 'var(--primary)' : 'transparent', color: formData.type === 'refund' ? '#fff' : 'var(--primary)', cursor: 'pointer', fontWeight: '500' }}
+            onClick={() => setFormData({ ...formData, type: 'refund' })}
+          >
+            Refund
+          </button>
         </div>
 
         <div>
@@ -486,17 +655,21 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
           />
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+        <div className="tx-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
           <div>
             <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Amount</label>
             <input 
+              ref={amountInputRef}
               type="number" 
               required
               min="0.01"
               step="0.01"
+              inputMode="decimal"
+              pattern="[0-9]*[.]?[0-9]*"
               value={formData.amount}
               onChange={e => setFormData({ ...formData, amount: e.target.value })}
-              style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem' }}
+              className="tx-amount-input"
+              style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1.1rem', fontWeight: '600' }}
               placeholder="0.00"
             />
           </div>
@@ -510,9 +683,35 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
               selectedMonth={selectedMonth} 
               singleSelect={!!editingId} 
             />
+            <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>
+              <button 
+                type="button" 
+                className="btn btn-ghost" 
+                style={{ padding: '3px 8px', fontSize: '0.75rem', minHeight: '26px', borderRadius: '6px', border: '1px solid var(--border)' }}
+                onClick={() => {
+                  const todayStr = new Date().toISOString().split('T')[0];
+                  setFormData(prev => ({ ...prev, dates: [todayStr] }));
+                }}
+              >
+                Today
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-ghost" 
+                style={{ padding: '3px 8px', fontSize: '0.75rem', minHeight: '26px', borderRadius: '6px', border: '1px solid var(--border)' }}
+                onClick={() => {
+                  const yest = new Date();
+                  yest.setDate(yest.getDate() - 1);
+                  const yestStr = yest.toISOString().split('T')[0];
+                  setFormData(prev => ({ ...prev, dates: [yestStr] }));
+                }}
+              >
+                Yesterday
+              </button>
+            </div>
           </div>
           
-          {formData.type === 'expense' && (
+          {(formData.type === 'expense' || formData.type === 'refund') && (
             <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <label style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -536,56 +735,88 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
               </div>
 
               {!isSplit ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Main Category</label>
-                    <select 
-                      value={formData.category}
-                      required={!isSplit}
-                      autoComplete="off"
-                      onChange={e => setFormData({ ...formData, category: e.target.value })}
-                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem' }}
-                    >
-                      <option value="">Select Category</option>
-                      {customCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    {customCategories.length === 0 && (
-                      <span style={{ display: 'block', marginTop: '6px', fontSize: '0.8rem', color: 'var(--warning)', fontWeight: '500' }}>
-                        ⚠️ No categories configured yet. Please set up a budget first.
+                <>
+                  {customCategories.length > 0 && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: '500' }}>
+                        Quick Select Category:
                       </span>
-                    )}
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Subcategory</label>
-                    <select 
-                      value={formData.subcategory}
-                      required={!isSplit}
-                      autoComplete="off"
-                      onChange={e => {
-                        if (e.target.value === '__custom__') {
-                          const custom = prompt('Enter custom subcategory:');
-                          if (custom) {
-                            setFormData({ ...formData, subcategory: custom });
-                          } else {
-                            setFormData({ ...formData, subcategory: '' });
-                          }
-                        } else {
-                          setFormData({ ...formData, subcategory: e.target.value });
-                        }
-                      }}
-                      style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem', appearance: 'auto' }}
-                    >
-                      <option value="">Select Subcategory</option>
-                      {(categoriesConfig[formData.category] || []).map(sub => (
-                        <option key={sub} value={sub}>{sub}</option>
-                      ))}
-                      {formData.subcategory && !(categoriesConfig[formData.category] || []).includes(formData.subcategory) && formData.subcategory !== '__custom__' && (
-                        <option value={formData.subcategory}>{formData.subcategory}</option>
+                      <div className="quick-category-chips">
+                        {customCategories.slice(0, 10).map(catName => {
+                          const isSelected = formData.category === catName;
+                          return (
+                            <button
+                              key={catName}
+                              type="button"
+                              className={`category-chip ${isSelected ? 'active' : ''}`}
+                              onClick={() => {
+                                const defaultSub = (categoriesConfig[catName] && categoriesConfig[catName].length > 0) ? categoriesConfig[catName][0] : '';
+                                setFormData(prev => ({
+                                  ...prev,
+                                  category: catName,
+                                  subcategory: defaultSub
+                                }));
+                              }}
+                            >
+                              {catName}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="tx-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Main Category</label>
+                      <select 
+                        value={formData.category}
+                        required={!isSplit}
+                        autoComplete="off"
+                        onChange={e => setFormData({ ...formData, category: e.target.value, subcategory: '' })}
+                        style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem' }}
+                      >
+                        <option value="">Select Category</option>
+                        {customCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      {customCategories.length === 0 && (
+                        <span style={{ display: 'block', marginTop: '6px', fontSize: '0.8rem', color: 'var(--warning)', fontWeight: '500' }}>
+                          ⚠️ No categories configured yet. Please set up a budget first.
+                        </span>
                       )}
-                      <option value="__custom__">+ Add Custom...</option>
-                    </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Subcategory</label>
+                      <select 
+                        value={formData.subcategory}
+                        required={!isSplit}
+                        autoComplete="off"
+                        onChange={e => {
+                          if (e.target.value === '__custom__') {
+                            const custom = prompt('Enter custom subcategory:');
+                            if (custom) {
+                              setFormData({ ...formData, subcategory: custom });
+                            } else {
+                              setFormData({ ...formData, subcategory: '' });
+                            }
+                          } else {
+                            setFormData({ ...formData, subcategory: e.target.value });
+                          }
+                        }}
+                        style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem', appearance: 'auto' }}
+                      >
+                        <option value="">Select Subcategory</option>
+                        {(categoriesConfig[formData.category] || []).map(sub => (
+                          <option key={sub} value={sub}>{sub}</option>
+                        ))}
+                        {formData.subcategory && !(categoriesConfig[formData.category] || []).includes(formData.subcategory) && formData.subcategory !== '__custom__' && (
+                          <option value={formData.subcategory}>{formData.subcategory}</option>
+                        )}
+                        <option value="__custom__">+ Add Custom...</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
+                </>
               ) : (
                 <div style={{ background: 'rgba(255,255,255,0.02)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
@@ -594,82 +825,91 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '12px' }}>
                     {splits.map((s, idx) => (
-                      <div key={idx} style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '14px', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', border: '1px solid var(--border)' }}>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', alignItems: 'center' }}>
-                          <div>
-                            <select
-                              value={s.category || ''}
-                              required={isSplit}
-                              onChange={e => {
-                                handleSplitChange(idx, 'category', e.target.value);
-                                handleSplitChange(idx, 'subcategory', ''); // Reset subcategory when category changes
-                              }}
-                              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.95rem' }}
-                            >
-                              <option value="">Select Main Category</option>
-                              {customCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                          </div>
-                          <div style={{ position: 'relative' }}>
-                            <select 
-                              value={s.subcategory}
-                              required={isSplit}
-                              autoComplete="off"
-                              onChange={e => {
-                                if (e.target.value === '__custom__') {
-                                  const custom = prompt('Enter custom subcategory:');
-                                  if (custom) {
-                                    handleSplitChange(idx, 'subcategory', custom);
+                      <div key={idx} style={{ display: 'flex', gap: '10px', alignItems: 'center', padding: '14px', background: 'rgba(255,255,255,0.02)', borderRadius: '10px', border: '1px solid var(--border)' }}>
+                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', alignItems: 'center' }}>
+                            <div>
+                              <select
+                                value={s.category || ''}
+                                required={isSplit}
+                                onChange={e => {
+                                  handleSplitChange(idx, 'category', e.target.value);
+                                  handleSplitChange(idx, 'subcategory', ''); // Reset subcategory when category changes
+                                }}
+                                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.95rem' }}
+                              >
+                                <option value="">Select Main Category</option>
+                                {customCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                              </select>
+                            </div>
+                            <div style={{ position: 'relative' }}>
+                              <select 
+                                value={s.subcategory}
+                                required={isSplit}
+                                autoComplete="off"
+                                onChange={e => {
+                                  if (e.target.value === '__custom__') {
+                                    const custom = prompt('Enter custom subcategory:');
+                                    if (custom) {
+                                      handleSplitChange(idx, 'subcategory', custom);
+                                    } else {
+                                      handleSplitChange(idx, 'subcategory', '');
+                                    }
                                   } else {
-                                    handleSplitChange(idx, 'subcategory', '');
+                                    handleSplitChange(idx, 'subcategory', e.target.value);
                                   }
-                                } else {
-                                  handleSplitChange(idx, 'subcategory', e.target.value);
-                                }
-                              }}
-                              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.95rem', appearance: 'auto' }}
-                            >
-                              <option value="">Select Subcategory</option>
-                              {(categoriesConfig[s.category] || []).map(sub => (
-                                <option key={sub} value={sub}>{sub}</option>
-                              ))}
-                              {s.subcategory && !(categoriesConfig[s.category] || []).includes(s.subcategory) && s.subcategory !== '__custom__' && (
-                                <option value={s.subcategory}>{s.subcategory}</option>
-                              )}
-                              <option value="__custom__">+ Add Custom...</option>
-                            </select>
+                                }}
+                                style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.95rem', appearance: 'auto' }}
+                              >
+                                <option value="">Select Subcategory</option>
+                                {(categoriesConfig[s.category] || []).map(sub => (
+                                  <option key={sub} value={sub}>{sub}</option>
+                                ))}
+                                {s.subcategory && !(categoriesConfig[s.category] || []).includes(s.subcategory) && s.subcategory !== '__custom__' && (
+                                  <option value={s.subcategory}>{s.subcategory}</option>
+                                )}
+                                <option value="__custom__">+ Add Custom...</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.8fr', gap: '8px', alignItems: 'center' }}>
+                            <input 
+                              type="date"
+                              required={isSplit}
+                              value={s.date || ''}
+                              onChange={e => handleSplitChange(idx, 'date', e.target.value)}
+                              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+                            />
+                            <input 
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              required={isSplit}
+                              value={s.amount}
+                              onChange={e => handleSplitChange(idx, 'amount', e.target.value)}
+                              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.9rem' }}
+                              placeholder="Amount"
+                              inputMode="decimal"
+                            />
+                            <input
+                              type="text"
+                              value={s.notes || ''}
+                              onChange={e => handleSplitChange(idx, 'notes', e.target.value)}
+                              placeholder="Split notes (optional)"
+                              style={{ width: '100%', padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.85rem' }}
+                            />
                           </div>
                         </div>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <input 
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            required={isSplit}
-                            value={s.amount}
-                            onChange={e => handleSplitChange(idx, 'amount', e.target.value)}
-                            style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)' }}
-                            placeholder="Amount"
-                            inputMode="decimal"
-                          />
-                          <input
-                            type="text"
-                            value={s.notes || ''}
-                            onChange={e => handleSplitChange(idx, 'notes', e.target.value)}
-                            placeholder="Split notes (optional)"
-                            style={{ flex: 2, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '0.85rem', boxSizing: 'border-box' }}
-                          />
-                          {splits.length > 1 && (
-                            <button 
-                              type="button" 
-                              className="btn btn-ghost btn-icon" 
-                              onClick={() => handleRemoveSplit(idx)}
-                              style={{ color: 'var(--danger)', padding: '8px', flexShrink: 0 }}
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          )}
-                        </div>
+                        {splits.length > 1 && (
+                          <button 
+                            type="button" 
+                            className="btn btn-ghost btn-icon" 
+                            onClick={() => handleRemoveSplit(idx)}
+                            style={{ color: 'var(--danger)', padding: '8px', flexShrink: 0 }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -717,7 +957,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px', gridColumn: 'span 2' }}>
+          <div className="tx-form-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginTop: '16px', gridColumn: 'span 2' }}>
             <div>
               <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Status</label>
               <select 
@@ -736,7 +976,7 @@ export default function TransactionForm({ onAdd, onUpdate, categoriesConfig, cus
                 onChange={e => setFormData({ ...formData, paymentMethod: e.target.value })}
                 style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', background: 'var(--bg-base)', color: 'var(--text-primary)', fontSize: '1rem' }}
               >
-                <option value="Checking Account">Checking Account</option>
+                <option value="Navy Federal Checking">Navy Federal Checking</option>
                 <option value="American Express">American Express</option>
                 <option value="Visa">Visa</option>
                 <option value="Capital One">Capital One</option>

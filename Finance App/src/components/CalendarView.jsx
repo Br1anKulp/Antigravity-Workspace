@@ -1,7 +1,7 @@
-import React from 'react';
 import { ArrowUpRight, ArrowDownRight, Clock } from 'lucide-react';
 
 export default function CalendarView({ transactions, selectedMonth }) {
+  if (!selectedMonth || typeof selectedMonth !== 'string' || !selectedMonth.includes('-')) return null;
   const [year, month] = selectedMonth.split('-').map(Number);
   
   // Calculate days in month and first day of month
@@ -19,10 +19,15 @@ export default function CalendarView({ transactions, selectedMonth }) {
   const getDayTransactions = (day) => {
     if (!day) return [];
     const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return transactions.filter(t => t.date.startsWith(dateStr));
+    return transactions.filter(t => {
+      if (!t.date) return false;
+      const dateVal = typeof t.date.toDate === 'function' ? t.date.toDate().toISOString() : String(t.date);
+      return dateVal.startsWith(dateStr);
+    });
   };
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
   return (
     <div style={{ marginTop: '16px', overflowX: 'auto' }}>
@@ -62,10 +67,10 @@ export default function CalendarView({ transactions, selectedMonth }) {
                 </div>
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   {dayTxs.map(t => {
-                    let color = 'var(--text-primary)';
-                    let icon = null;
+                    let color;
+                    let icon;
                     
-                    if (t.type === 'income') {
+                    if (t.type === 'income' || t.type === 'refund') {
                       color = 'var(--success)';
                       icon = <ArrowUpRight size={10} />;
                     } else if (t.status === 'unpaid') {

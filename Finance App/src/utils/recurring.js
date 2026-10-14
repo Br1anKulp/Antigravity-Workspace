@@ -1,12 +1,14 @@
-import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, query, where, getDocs, addDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { parseISO, isSameMonth, isPast, setDate } from 'date-fns'
 
-export const processRecurringTransactions = async (userEmail) => {
-  if (!userEmail) return
+export const processRecurringTransactions = async (userEmail, householdId) => {
+  if (!userEmail && !householdId) return
 
   try {
-    const q = query(collection(db, 'transactions'), where('user', '==', userEmail), where('isRecurring', '==', true))
+    const q = householdId
+      ? query(collection(db, 'transactions'), where('householdId', '==', householdId), where('isRecurring', '==', true))
+      : query(collection(db, 'transactions'), where('user', '==', userEmail), where('isRecurring', '==', true))
     const snapshot = await getDocs(q)
     
     // Group recurring transactions by title
@@ -40,8 +42,12 @@ export const processRecurringTransactions = async (userEmail) => {
             amount: latestTx.amount,
             type: latestTx.type,
             category: latestTx.category,
+            subcategory: latestTx.subcategory || null,
             user: userEmail,
+            householdId: householdId || latestTx.householdId,
             date: targetDateThisMonth.toISOString(),
+            status: latestTx.status || 'paid',
+            paymentMethod: latestTx.paymentMethod || 'Navy Federal Checking',
             isRecurring: true
           })
           console.log(`Added recurring transaction for ${title}`)

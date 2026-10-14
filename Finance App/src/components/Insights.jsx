@@ -1,7 +1,7 @@
-import React, { useMemo } from 'react'
+import { useMemo } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  PieChart, Pie, Cell, Sector
+  PieChart, Pie, Cell
 } from 'recharts'
 import { TrendingUp, TrendingDown, DollarSign, Award } from 'lucide-react'
 
@@ -31,7 +31,7 @@ const CustomTooltip = ({ active, payload, label }) => {
   )
 }
 
-export default function Insights({ transactions, budgets, customCategories }) {
+export default function Insights({ transactions, customCategories }) {
   // Build last 6 months
   const last6Months = useMemo(() => {
     const months = []
@@ -50,9 +50,19 @@ export default function Insights({ transactions, budgets, customCategories }) {
     return last6Months.map(({ key, label }) => {
       const row = { month: label }
       customCategories.forEach(cat => {
-        const spent = transactions
-          .filter(t => t.type === 'expense' && t.category === cat && t.date?.startsWith(key))
-          .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0)
+        const spent = transactions.reduce((sum, t) => {
+          if (!((t.type === 'expense' || t.type === 'refund') && t.date?.startsWith(key))) return sum;
+          const isRefund = t.type === 'refund';
+          const sign = isRefund ? -1 : 1;
+          if (t.splits?.length > 0) {
+            return sum + t.splits
+              .filter(s => (s.category || t.category) === cat)
+              .reduce((sSum, s) => sSum + sign * (parseFloat(s.amount) || 0), 0);
+          } else if (t.category === cat) {
+            return sum + sign * (parseFloat(t.amount) || 0);
+          }
+          return sum;
+        }, 0)
         if (spent > 0) row[cat] = parseFloat(spent.toFixed(2))
       })
       return row
@@ -68,9 +78,20 @@ export default function Insights({ transactions, budgets, customCategories }) {
       .map(cat => ({
         name: cat,
         value: parseFloat(
-          transactions
-            .filter(t => t.type === 'expense' && t.category === cat && t.date?.startsWith(currentMonthKey))
-            .reduce((sum, t) => sum + parseFloat(t.amount || 0), 0)
+           transactions
+            .reduce((sum, t) => {
+              if (!((t.type === 'expense' || t.type === 'refund') && t.date?.startsWith(currentMonthKey))) return sum;
+              const isRefund = t.type === 'refund';
+              const sign = isRefund ? -1 : 1;
+              if (t.splits?.length > 0) {
+                return sum + t.splits
+                  .filter(s => (s.category || t.category) === cat)
+                  .reduce((sSum, s) => sSum + sign * (parseFloat(s.amount) || 0), 0);
+              } else if (t.category === cat) {
+                return sum + sign * (parseFloat(t.amount) || 0);
+              }
+              return sum;
+            }, 0)
             .toFixed(2)
         )
       }))
@@ -79,18 +100,36 @@ export default function Insights({ transactions, budgets, customCategories }) {
 
   // Summary stats
   const stats = useMemo(() => {
-    const currMonthExpenses = transactions.filter(t => t.type === 'expense' && t.date?.startsWith(currentMonthKey))
+    const currMonthExpenses = transactions.filter(t => (t.type === 'expense' || t.type === 'refund') && t.date?.startsWith(currentMonthKey))
     const prevMonthKey = last6Months[last6Months.length - 2]?.key
-    const prevMonthExpenses = transactions.filter(t => t.type === 'expense' && t.date?.startsWith(prevMonthKey))
+    const prevMonthExpenses = transactions.filter(t => (t.type === 'expense' || t.type === 'refund') && t.date?.startsWith(prevMonthKey))
 
-    const currTotal = currMonthExpenses.reduce((s, t) => s + parseFloat(t.amount || 0), 0)
-    const prevTotal = prevMonthExpenses.reduce((s, t) => s + parseFloat(t.amount || 0), 0)
+    const getExpensesTotal = (txs) => txs.reduce((s, t) => {
+      const isRefund = t.type === 'refund';
+      return s + (isRefund ? -parseFloat(t.amount || 0) : parseFloat(t.amount || 0));
+    }, 0);
+
+    const currTotal = getExpensesTotal(currMonthExpenses)
+    const prevTotal = getExpensesTotal(prevMonthExpenses)
 
     const biggestCat = pieData.reduce((max, d) => d.value > (max?.value || 0) ? d : max, null)
 
+    const getCatTotal = (txs, catName) => txs.reduce((s, t) => {
+      const isRefund = t.type === 'refund';
+      const sign = isRefund ? -1 : 1;
+      if (t.splits?.length > 0) {
+        return s + t.splits
+          .filter(sp => (sp.category || t.category) === catName)
+          .reduce((ss, sp) => ss + sign * (parseFloat(sp.amount) || 0), 0);
+      } else if (t.category === catName) {
+        return s + sign * (parseFloat(t.amount) || 0);
+      }
+      return s;
+    }, 0);
+
     const catChanges = customCategories.map(cat => {
-      const curr = currMonthExpenses.filter(t => t.category === cat).reduce((s, t) => s + parseFloat(t.amount || 0), 0)
-      const prev = prevMonthExpenses.filter(t => t.category === cat).reduce((s, t) => s + parseFloat(t.amount || 0), 0)
+      const curr = getCatTotal(currMonthExpenses, cat);
+      const prev = getCatTotal(prevMonthExpenses, cat);
       return { cat, change: curr - prev }
     })
     const biggestIncrease = catChanges.filter(c => c.change > 0).sort((a, b) => b.change - a.change)[0]

@@ -1,18 +1,35 @@
-import React from 'react'
 import { TrendingUp, TrendingDown, DollarSign, Clock, CreditCard, ShieldCheck, CheckCircle2 } from 'lucide-react'
 import AnalyticsChart from './AnalyticsChart'
 
+const formatDateSafe = (dateStr) => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('T')[0].split('-');
+  if (parts.length === 3) {
+    const [y, m, d] = parts.map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString();
+  }
+  return new Date(dateStr).toLocaleDateString();
+};
+
 export default function Dashboard({ transactions, budgets = {}, onUpdateTransaction }) {
-  const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + parseFloat(t.amount), 0)
-  const expenses = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + parseFloat(t.amount), 0)
-  const unpaid = transactions.filter(t => t.type === 'expense' && t.status === 'unpaid').reduce((sum, t) => sum + parseFloat(t.amount), 0)
+  const income = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
+  const expenses = transactions.reduce((sum, t) => {
+    if (t.type === 'expense') return sum + (parseFloat(t.amount) || 0);
+    if (t.type === 'refund') return sum - (parseFloat(t.amount) || 0);
+    return sum;
+  }, 0)
+  const unpaid = transactions.filter(t => t.type === 'expense' && t.status === 'unpaid').reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0)
   const balance = income - expenses
 
   // Unpaid bills details grouping by card/account
   const unpaidTransactions = transactions.filter(t => t.type === 'expense' && t.status === 'unpaid')
   
   const unpaidByCard = unpaidTransactions.reduce((groups, t) => {
-    const card = t.paymentMethod || 'Checking Account';
+    let card = t.paymentMethod || 'Navy Federal Checking';
+    const normalized = card.toLowerCase();
+    if (normalized.includes('chase') || normalized.includes('visa')) {
+      card = 'Chase / Visa';
+    }
     if (!groups[card]) groups[card] = [];
     groups[card].push(t);
     return groups;
@@ -30,7 +47,10 @@ export default function Dashboard({ transactions, budgets = {}, onUpdateTransact
         const subData = typeof sub === 'object' ? sub : { limit: sub || 0, dueDate: '' }
         const dueDays = String(subData.dueDate || '').split(',').map(d => d.trim()).filter(d => !isNaN(d) && d !== '')
         const multiplier = dueDays.length > 0 ? dueDays.length : 1
-        return sum + ((parseFloat(subData.limit) || 0) * multiplier)
+        const subLimitVal = (typeof subData.limit === 'object' && subData.limit !== null)
+          ? Object.values(subData.limit).reduce((s, val) => s + (parseFloat(val) || 0), 0)
+          : (parseFloat(subData.limit) || 0) * multiplier
+        return sum + subLimitVal
       }, 0);
     
     // Category limit fallback to main limit if no subcategories, also scaled by due date multiplicity
@@ -44,15 +64,17 @@ export default function Dashboard({ transactions, budgets = {}, onUpdateTransact
     
     // Category spent
     const spent = transactions
-      .filter(t => t.type === 'expense')
+      .filter(t => t.type === 'expense' || t.type === 'refund')
       .reduce((sum, t) => {
+        const isRefund = t.type === 'refund';
+        const sign = isRefund ? -1 : 1;
         if (t.splits?.length > 0) {
           const splitSum = t.splits
             .filter(split => (split.category || t.category) === cat)
-            .reduce((sSum, split) => sSum + (parseFloat(split.amount) || 0), 0);
+            .reduce((sSum, split) => sSum + sign * (parseFloat(split.amount) || 0), 0);
           return sum + splitSum;
         } else if (t.category === cat) {
-          return sum + (parseFloat(t.amount) || 0);
+          return sum + sign * (parseFloat(t.amount) || 0);
         }
         return sum;
       }, 0);
@@ -66,8 +88,8 @@ export default function Dashboard({ transactions, budgets = {}, onUpdateTransact
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       {/* 4 Stat Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '24px' }}>
-        <div className="glass-panel" style={{ padding: '24px', position: 'relative', overflow: 'hidden' }}>
+      <div className="stat-card-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: '24px' }}>
+        <div className="glass-panel stat-card" style={{ padding: '24px', position: 'relative', overflow: 'hidden' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <p style={{ color: 'var(--text-secondary)', marginBottom: '4px', fontSize: '0.95rem' }}>Total Remaining</p>
@@ -85,7 +107,7 @@ export default function Dashboard({ transactions, budgets = {}, onUpdateTransact
           </div>
         </div>
 
-        <div className="glass-panel" style={{ padding: '24px' }}>
+        <div className="glass-panel stat-card" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <p style={{ color: 'var(--text-secondary)', marginBottom: '8px', fontSize: '0.95rem' }}>Total Income</p>
@@ -99,7 +121,7 @@ export default function Dashboard({ transactions, budgets = {}, onUpdateTransact
           </div>
         </div>
 
-        <div className="glass-panel" style={{ padding: '24px' }}>
+        <div className="glass-panel stat-card" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <p style={{ color: 'var(--text-secondary)', marginBottom: '8px', fontSize: '0.95rem' }}>Total Spent</p>
@@ -113,7 +135,7 @@ export default function Dashboard({ transactions, budgets = {}, onUpdateTransact
           </div>
         </div>
 
-        <div className="glass-panel" style={{ padding: '24px' }}>
+        <div className="glass-panel stat-card" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <p style={{ color: 'var(--text-secondary)', marginBottom: '8px', fontSize: '0.95rem' }}>Unpaid Bills</p>
@@ -138,9 +160,9 @@ export default function Dashboard({ transactions, budgets = {}, onUpdateTransact
             All bills are paid! 🎉
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: '20px' }}>
             {Object.entries(unpaidByCard).map(([card, bills]) => {
-              const cardTotal = bills.reduce((sum, b) => sum + parseFloat(b.amount), 0);
+              const cardTotal = bills.reduce((sum, b) => sum + (parseFloat(b.amount) || 0), 0);
               return (
                 <div key={card} style={{ background: 'var(--bg-surface)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '8px' }}>
@@ -155,14 +177,15 @@ export default function Dashboard({ transactions, budgets = {}, onUpdateTransact
                         <div style={{ minWidth: 0, flex: 1 }}>
                           <div style={{ fontWeight: '500', color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.title}</div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                            {new Date(b.date).toLocaleDateString()} • {b.category} {b.subcategory && `> ${b.subcategory}`}
+                            {formatDateSafe(b.date)} • {b.category} {b.subcategory && `> ${b.subcategory}`}
                           </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-                          <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>${parseFloat(b.amount).toFixed(2)}</span>
+                          <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>${(parseFloat(b.amount) || 0).toFixed(2)}</span>
                           <button
                             type="button"
-                            onClick={() => onUpdateTransaction && onUpdateTransaction(b.id, { ...b, status: 'paid' })}
+                            onClick={() => onUpdateTransaction && onUpdateTransaction(b.id, { status: 'paid' })}
+                            className="mark-paid-btn"
                             style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', color: 'var(--success)', opacity: 0.8, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'transform 0.2s, opacity 0.2s' }}
                             title="Mark as Paid"
                             onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.1)'; e.currentTarget.style.opacity = '1' }}

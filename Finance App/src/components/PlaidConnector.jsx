@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { usePlaidLink } from 'react-plaid-link'
-import { Link, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react'
-import { collection, query, onSnapshot, where } from 'firebase/firestore'
+import { Link, RefreshCw, AlertCircle, Trash2 } from 'lucide-react'
+import { collection, query, onSnapshot, where, doc, deleteDoc, getDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 
 export default function PlaidConnector({ user, householdId, onOpenBankFeed }) {
@@ -11,25 +11,53 @@ export default function PlaidConnector({ user, householdId, onOpenBankFeed }) {
   const [linkedAccounts, setLinkedAccounts] = useState([])
   const [pendingCount, setPendingCount] = useState(0)
   const [error, setError] = useState(null)
+  const [primaryUser, setPrimaryUser] = useState(user?.email?.toLowerCase() || '')
 
-  // Use the Firebase Functions regional endpoints for us-central1 (direct Cloud Run URLs for Gen 2)
-  const createlinktokenUrl = 'https://createlinktoken-lhx44eti5q-uc.a.run.app'
-  const exchangepublictokenUrl = 'https://exchangepublictoken-lhx44eti5q-uc.a.run.app'
-  const synctransactionsUrl = 'https://synctransactions-lhx44eti5q-uc.a.run.app'
+  // Load the Plaid API URLs dynamically from the active environment variables
+  const createlinktokenUrl = import.meta.env.VITE_PLAID_CREATE_LINK_TOKEN_URL
+  const exchangepublictokenUrl = import.meta.env.VITE_PLAID_EXCHANGE_PUBLIC_TOKEN_URL
+  const synctransactionsUrl = import.meta.env.VITE_PLAID_SYNC_TRANSACTIONS_URL
 
-  // Listen to the user's linked Plaid items from Firestore
+  // Listen to the household's linked Plaid items from Firestore
   useEffect(() => {
-    if (!user) return
-    const q = query(collection(db, 'users', user.email, 'plaid_items'))
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const items = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }))
-      setLinkedAccounts(items)
-    })
-    return () => unsubscribe()
-  }, [user])
+    if (!user || !householdId) return
+    const userEmailLower = user.email.toLowerCase()
+    let unsubscribePlaid = () => {}
+
+    const setupListener = async () => {
+      let targetUser = userEmailLower
+      try {
+        const householdSnap = await getDoc(doc(db, 'households', householdId))
+        if (householdSnap.exists()) {
+          const hhData = householdSnap.data()
+          if (hhData.primaryPlaidUser) {
+            targetUser = hhData.primaryPlaidUser.toLowerCase()
+          }
+        } else if (userEmailLower === 'familynflowers@protonmail.com' || userEmailLower === 'brian.k.kulp@gmail.com') {
+          targetUser = 'brian.k.kulp@gmail.com'
+        }
+      } catch (err) {
+        console.warn('Error fetching household primaryPlaidUser:', err)
+        if (userEmailLower === 'familynflowers@protonmail.com' || userEmailLower === 'brian.k.kulp@gmail.com') {
+          targetUser = 'brian.k.kulp@gmail.com'
+        }
+      }
+
+      setPrimaryUser(targetUser)
+
+      const q = query(collection(db, 'users', targetUser, 'plaid_items'))
+      unsubscribePlaid = onSnapshot(q, (snapshot) => {
+        const items = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }))
+        setLinkedAccounts(items)
+      })
+    }
+
+    setupListener()
+    return () => unsubscribePlaid()
+  }, [user, householdId])
 
   // Listen for the count of pending bank transactions
   useEffect(() => {
@@ -44,15 +72,30 @@ export default function PlaidConnector({ user, householdId, onOpenBankFeed }) {
     return () => unsubscribe()
   }, [user, householdId])
 
+  const getAuthHeaders = async () => {
+    const headers = { 'Content-Type': 'application/json' }
+    if (user && typeof user.getIdToken === 'function') {
+      try {
+        const token = await user.getIdToken()
+        headers['Authorization'] = `Bearer ${token}`
+      } catch (err) {
+        console.warn('Failed to fetch Auth ID token:', err)
+      }
+    }
+    return headers
+  }
+
   // 1. Fetch Plaid Link Token from Cloud Function
   const fetchLinkToken = async () => {
     setLoading(true)
     setError(null)
     try {
+      const userEmailLower = user.email.toLowerCase()
+      const headers = await getAuthHeaders()
       const res = await fetch(createlinktokenUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.email })
+        headers,
+        body: JSON.stringify({ userId: userEmailLower })
       })
       if (!res.ok) throw new Error('Failed to create link token')
       const data = await res.json()
@@ -71,17 +114,33 @@ export default function PlaidConnector({ user, householdId, onOpenBankFeed }) {
     onSuccess: async (publicToken, metadata) => {
       setLoading(true)
       try {
+        const userEmailLower = user.email.toLowerCase()
+        const targetUserId = primaryUser || userEmailLower
+        const headers = await getAuthHeaders()
         const res = await fetch(exchangepublictokenUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
             publicToken,
-            userId: user.email,
+            userId: targetUserId,
             institutionName: metadata.institution?.name || 'Linked Bank',
             householdId
           })
         })
         if (!res.ok) throw new Error('Token exchange failed')
+
+        // If the household document doesn't have primaryPlaidUser set, set it now
+        if (householdId) {
+          try {
+            await updateDoc(doc(db, 'households', householdId), {
+              primaryPlaidUser: targetUserId
+            })
+            setPrimaryUser(targetUserId)
+          } catch (e) {
+            console.warn('Could not update primaryPlaidUser on household:', e)
+          }
+        }
+
         // Automatically trigger a sync after linking
         triggerSync()
       } catch (err) {
@@ -102,7 +161,7 @@ export default function PlaidConnector({ user, householdId, onOpenBankFeed }) {
     if (linkToken && ready) {
       open()
     }
-  }, [linkToken, ready])
+  }, [linkToken, ready, open])
 
   // 3. Trigger Transaction Sync
   const triggerSync = async () => {
@@ -110,11 +169,13 @@ export default function PlaidConnector({ user, householdId, onOpenBankFeed }) {
     setSyncing(true)
     setError(null)
     try {
+      const userEmailLower = user.email.toLowerCase()
+      const headers = await getAuthHeaders()
       const res = await fetch(synctransactionsUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
-          userId: user.email,
+          userId: primaryUser || userEmailLower,
           householdId
         })
       })
@@ -130,8 +191,34 @@ export default function PlaidConnector({ user, householdId, onOpenBankFeed }) {
   }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-      {linkedAccounts.length > 0 ? (
+    <div className="plaid-connector" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {linkedAccounts.map(account => (
+        <div key={account.id} className="plaid-pill" style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'var(--primary-bg)', border: '1px solid var(--border)', padding: '6px 12px', borderRadius: '8px', fontSize: '0.82rem', color: 'var(--text-primary)' }}>
+          <span style={{ fontWeight: '500' }}>{account.institutionName}</span>
+          <button 
+            onClick={async (e) => {
+              e.stopPropagation();
+              if (window.confirm(`Unlink ${account.institutionName}? You will need to link it again to update credentials.`)) {
+                try {
+                  const userEmailLower = user.email.toLowerCase()
+                  const targetUser = primaryUser || userEmailLower
+                  await deleteDoc(doc(db, 'users', targetUser, 'plaid_items', account.id));
+                } catch (err) {
+                  console.error("Error unlinking account:", err);
+                  alert("Failed to unlink account.");
+                }
+              }
+            }}
+            className="touch-btn"
+            style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', opacity: 0.7 }}
+            title="Unlink account"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+      ))}
+
+      {linkedAccounts.length > 0 && (
         <>
           <button 
             className="btn btn-ghost btn-icon" 
@@ -182,24 +269,24 @@ export default function PlaidConnector({ user, householdId, onOpenBankFeed }) {
             )}
           </button>
         </>
-      ) : (
-        <button 
-          className="btn btn-ghost" 
-          style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '6px',
-            fontSize: '0.85rem',
-            padding: '6px 12px',
-            borderRadius: '8px'
-          }}
-          onClick={fetchLinkToken}
-          disabled={loading}
-        >
-          <Link size={16} />
-          <span>{loading ? 'Connecting...' : 'Link Bank'}</span>
-        </button>
       )}
+
+      <button 
+        className="btn btn-ghost" 
+        style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '6px',
+          fontSize: '0.85rem',
+          padding: '6px 12px',
+          borderRadius: '8px'
+        }}
+        onClick={fetchLinkToken}
+        disabled={loading}
+      >
+        <Link size={16} />
+        <span>{loading ? 'Connecting...' : (linkedAccounts.length > 0 ? '+ Link Another' : 'Link Bank')}</span>
+      </button>
 
       {error && (
         <div style={{ display: 'flex', alignItems: 'center', color: 'var(--danger)', gap: '4px', fontSize: '0.8rem' }} title={error}>

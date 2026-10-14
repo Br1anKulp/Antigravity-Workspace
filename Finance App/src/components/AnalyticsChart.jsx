@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function AnalyticsChart({ transactions }) {
@@ -6,20 +6,23 @@ export default function AnalyticsChart({ transactions }) {
     const categoryTotals = {};
     
     transactions.forEach(t => {
-      if (t.type === 'expense') {
+      if (t.type === 'expense' || t.type === 'refund') {
+        const isRefund = t.type === 'refund';
         if (t.splits && t.splits.length > 0) {
           t.splits.forEach(s => {
             const cat = s.category || t.category;
-            categoryTotals[cat] = (categoryTotals[cat] || 0) + parseFloat(s.amount);
+            const amt = isRefund ? -parseFloat(s.amount) : parseFloat(s.amount);
+            categoryTotals[cat] = (categoryTotals[cat] || 0) + amt;
           });
         } else {
-          categoryTotals[t.category] = (categoryTotals[t.category] || 0) + parseFloat(t.amount);
+          const amt = isRefund ? -parseFloat(t.amount) : parseFloat(t.amount);
+          categoryTotals[t.category] = (categoryTotals[t.category] || 0) + amt;
         }
       }
     });
 
     return Object.entries(categoryTotals)
-      .filter(([_, value]) => value > 0)
+      .filter(([, value]) => value > 0)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value); // Sort by largest expense
   }, [transactions]);
@@ -44,18 +47,6 @@ export default function AnalyticsChart({ transactions }) {
       </div>
     );
   }
-
-  const CustomTooltip = ({ active, payload }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div style={{ background: 'var(--bg-base)', border: '1px solid var(--border)', padding: '8px 12px', borderRadius: '8px', boxShadow: 'var(--shadow-md)' }}>
-          <p style={{ margin: 0, fontWeight: '600', color: 'var(--text-primary)' }}>{payload[0].name}</p>
-          <p style={{ margin: 0, color: payload[0].payload.fill }}>${payload[0].value.toFixed(2)}</p>
-        </div>
-      );
-    }
-    return null;
-  };
 
   return (
     <div className="glass-panel" style={{ padding: '24px', minHeight: '340px' }}>
@@ -90,3 +81,15 @@ export default function AnalyticsChart({ transactions }) {
     </div>
   );
 }
+
+const CustomTooltip = ({ active, payload }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div style={{ background: 'var(--bg-base)', border: '1px solid var(--border)', padding: '8px 12px', borderRadius: '8px', boxShadow: 'var(--shadow-md)' }}>
+        <p style={{ margin: 0, fontWeight: '600', color: 'var(--text-primary)' }}>{payload[0].name}</p>
+        <p style={{ margin: 0, color: payload[0].payload.fill }}>${payload[0].value.toFixed(2)}</p>
+      </div>
+    );
+  }
+  return null;
+};

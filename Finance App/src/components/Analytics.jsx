@@ -1,4 +1,3 @@
-import React from 'react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import { getCurrentPeriod, isDateInPeriod } from '../utils/periods'
 
@@ -6,10 +5,12 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#a255ff', '#ff5592'
 
 export default function Analytics({ transactions }) {
   const period = getCurrentPeriod()
-  const periodTransactions = transactions.filter(t => t.type === 'expense' && isDateInPeriod(t.date, period))
+  const periodTransactions = transactions.filter(t => (t.type === 'expense' || t.type === 'refund') && isDateInPeriod(t.date, period))
 
   const categoryTotals = periodTransactions.reduce((acc, t) => {
-    acc[t.category] = (acc[t.category] || 0) + parseFloat(t.amount)
+    const isRefund = t.type === 'refund';
+    const amt = isRefund ? -parseFloat(t.amount) : parseFloat(t.amount);
+    acc[t.category] = (acc[t.category] || 0) + amt
     return acc
   }, {})
 

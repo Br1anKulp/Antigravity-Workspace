@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function getUserEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    // Households collection
+    match /households/{householdId} {
+      allow read, create, update: if isAuthenticated();
+    }
+
+    // User documents and subcollections (Plaid items, settings, notifications)
+    match /users/{userId} {
+      allow read, write: if isAuthenticated();
+      
+      match /{document=**} {
+        allow read: if isAuthenticated() && (
+          getUserEmail() == userId.lower() || 
+          request.auth.token.email == userId ||
+          (
+            (getUserEmail() == 'brian.k.kulp@gmail.com' || getUserEmail() == 'familynflowers@protonmail.com') &&
+            (userId.lower() == 'brian.k.kulp@gmail.com' || userId.lower() == 'familynflowers@protonmail.com')
+          ) ||
+          (resource != null && 'householdId' in resource.data && resource.data.householdId != null &&
+           getUserEmail() in get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members)
+        );
+        allow write: if isAuthenticated() && (
+          getUserEmail() == userId.lower() || 
+          request.auth.token.email == userId ||
+          (resource != null && 'householdId' in resource.data && resource.data.householdId != null &&
+           getUserEmail() in get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.members)
+        );
+      }
+    }
+
+    // Household finance collections
+    match /transactions/{txId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /bank_transactions/{txId} {
+      allow read, write: if isAuthenticated();
+    }
+    match /budgets/{budgetId} {
+      allow read, write: if isAuthenticated();
+    }
+  }
+}

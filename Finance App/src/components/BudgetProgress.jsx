@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Calendar, ChevronDown, ChevronRight, Plus, Pencil, Save, Trash2, GripVertical, Copy } from 'lucide-react'
-import { doc, setDoc, getDoc, updateDoc, deleteField, collection, getDocs, query, where } from 'firebase/firestore'
+import { doc, setDoc, getDoc, updateDoc, deleteField, collection, getDocs, query, where, deleteDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import {
   DndContext,
@@ -100,6 +100,7 @@ function CalendarDayPicker({ value, onChange, onBlur }) {
               const isSelected = selectedDays.includes(day);
               return (
                 <button
+                  className="calendar-day-btn"
                   key={day}
                   type="button"
                   onClick={() => toggleDay(day)}
@@ -179,10 +180,9 @@ function SortableSubRow({ id, cat, children }) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function BudgetProgress({ transactions, budgets, user, householdId, customCategories, selectedMonth }) {
   const [expandedCategories, setExpandedCategories] = useState({})
+  const [expandedSubTx, setExpandedSubTx] = useState({}) // { [cat::sub]: boolean }
+  const [payPeriod, setPayPeriod] = useState('month') // 'month' | 'paycheck1' | 'paycheck2'
 
-  // Ordered lists (derived from budgets._categoryOrder / ._subcategoryOrder)
-  const [catOrder, setCatOrder] = useState([])
-  const [subOrders, setSubOrders] = useState({}) // { [cat]: [sub1, sub2, ...] }
 
   // Add subcat states
   const [addingSubcatTo, setAddingSubcatTo] = useState(null)
@@ -198,31 +198,26 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
   const [editName, setEditName] = useState('')
 
   const [isSaving, setIsSaving] = useState(false)
-  const [isCopying, setIsCopying] = useState(false)
-  const [addingNewCat, setAddingNewCat] = useState(false)
-  const [newCatName, setNewCatName] = useState('')
-  const [newCatDue, setNewCatDue] = useState('')
-  const [activeDragId, setActiveDragId] = useState(null)
-  const [activeDragType, setActiveDragType] = useState(null) // 'cat' | 'sub'
-  const [activeDragCat, setActiveDragCat] = useState(null)
+  const [catOrder, setCatOrder] = useState([])
+  const [subOrders, setSubOrders] = useState({}) // { [cat]: [sub1, sub2, ...] }
+  const [prevBudgets, setPrevBudgets] = useState(null)
 
-  // ── Sync order from budgets ──────────────────────────────────────────────
-  useEffect(() => {
+  // Sync order from budgets during render-phase (React 19 style to prevent Cascading Renders warning)
+  if (budgets !== prevBudgets) {
+    setPrevBudgets(budgets)
+
     const storedOrder = budgets?._categoryOrder
     const allCats = customCategories.filter(c => c !== '_categoryOrder' && c !== '_subcategoryOrder')
 
     if (storedOrder && Array.isArray(storedOrder)) {
-      // Merge stored order with any newly added categories
-      const ordered = [
+      setCatOrder([
         ...storedOrder.filter(c => allCats.includes(c)),
         ...allCats.filter(c => !storedOrder.includes(c)),
-      ]
-      setCatOrder(ordered)
+      ])
     } else {
       setCatOrder(allCats)
     }
 
-    // Sub orders — read from _subcategoryOrder (matches saveSubOrder write path)
     const newSubOrders = {}
     allCats.forEach(cat => {
       const subs = Object.keys(budgets?.[cat]?.subcategories || {}).filter(s => s !== '_order')
@@ -237,7 +232,15 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
       }
     })
     setSubOrders(newSubOrders)
-  }, [budgets, customCategories])
+  }
+
+  const [isCopying, setIsCopying] = useState(false)
+  const [addingNewCat, setAddingNewCat] = useState(false)
+  const [newCatName, setNewCatName] = useState('')
+  const [newCatDue, setNewCatDue] = useState('')
+  const [activeDragId, setActiveDragId] = useState(null)
+  const [activeDragType, setActiveDragType] = useState(null) // 'cat' | 'sub'
+  const [activeDragCat, setActiveDragCat] = useState(null)
 
   // ── Custom collision: only match items of the same type ──────────────────
   const typeSafeCollision = useCallback((args) => {
@@ -260,7 +263,7 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
 
   // ── Persist category order ───────────────────────────────────────────────
   const saveCatOrder = useCallback(async (newOrder) => {
-    if (!user) return
+    if (!user || !householdId || !selectedMonth) return
     try {
       await updateDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), {
         _categoryOrder: newOrder,
@@ -272,7 +275,7 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
 
   // ── Persist subcategory order ────────────────────────────────────────────
   const saveSubOrder = useCallback(async (cat, newOrder) => {
-    if (!user) return
+    if (!user || !householdId || !selectedMonth) return
     try {
       await updateDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), {
         [`${cat}._subcategoryOrder`]: newOrder,
@@ -368,22 +371,113 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
     }
   }
 
-  const calculateCatLimit = (catData) => {
-    const subLimitSum = Object.entries(catData?.subcategories || {})
-      .filter(([k]) => k !== '_order')
-      .reduce((sum, [, sub]) => {
-        const subData = typeof sub === 'object' ? sub : { limit: sub || 0, dueDate: '' }
-        const dueDays = String(subData.dueDate || '').split(',').map(d => d.trim()).filter(d => !isNaN(d) && d !== '')
-        const multiplier = dueDays.length > 0 ? dueDays.length : 1
-        return sum + ((parseFloat(subData.limit) || 0) * multiplier)
-      }, 0);
-    if (subLimitSum > 0 || Object.keys(catData?.subcategories || {}).length > 0) {
-      return subLimitSum;
+  const getSubLimitForInstance = (subData, day) => {
+    if (typeof subData.limit === 'object' && subData.limit !== null) {
+      if (day !== null && subData.limit[day] !== undefined) {
+        return parseFloat(subData.limit[day]) || 0;
+      }
+      return Object.values(subData.limit).reduce((s, val) => s + (parseFloat(val) || 0), 0);
     }
-    const mainDueDays = String(catData?.dueDate || '').split(',').map(d => d.trim()).filter(d => !isNaN(d) && d !== '')
-    const mainMultiplier = mainDueDays.length > 0 ? mainDueDays.length : 1
-    return (parseFloat(catData?.limit) || 0) * mainMultiplier;
+    return parseFloat(subData.limit) || 0;
   }
+
+
+
+
+
+  const getPeriodSubLimit = (subData, period) => {
+    const isObj = typeof subData === 'object' && subData !== null;
+    const rawLimit = isObj ? subData.limit : subData;
+    const dueDate = isObj ? subData.dueDate : '';
+    
+    const dueDays = String(dueDate || '')
+      .split(',')
+      .map(d => parseInt(d.trim(), 10))
+      .filter(d => !isNaN(d) && d >= 1 && d <= 31);
+      
+    if (period === 'month') {
+      if (typeof rawLimit === 'object' && rawLimit !== null) {
+        return dueDays.reduce((sum, d) => sum + (parseFloat(rawLimit[d]) || 0), 0);
+      }
+      const mult = dueDays.length > 0 ? dueDays.length : 1;
+      return (parseFloat(rawLimit) || 0) * mult;
+    }
+    
+    if (period === 'paycheck1') {
+      if (dueDays.length > 0) {
+        const p1Days = dueDays.filter(d => d <= 14);
+        if (p1Days.length === 0) return 0;
+        if (typeof rawLimit === 'object' && rawLimit !== null) {
+          return p1Days.reduce((sum, d) => sum + (parseFloat(rawLimit[d]) || 0), 0);
+        }
+        return (parseFloat(rawLimit) || 0) * p1Days.length;
+      }
+      return (parseFloat(rawLimit) || 0) / 2;
+    }
+    
+    if (period === 'paycheck2') {
+      if (dueDays.length > 0) {
+        const p2Days = dueDays.filter(d => d >= 15);
+        if (p2Days.length === 0) return 0;
+        if (typeof rawLimit === 'object' && rawLimit !== null) {
+          return p2Days.reduce((sum, d) => sum + (parseFloat(rawLimit[d]) || 0), 0);
+        }
+        return (parseFloat(rawLimit) || 0) * p2Days.length;
+      }
+      return (parseFloat(rawLimit) || 0) / 2;
+    }
+    
+    return parseFloat(rawLimit) || 0;
+  };
+
+  const getPeriodCatLimit = (catData, period) => {
+    const subcategories = catData.subcategories || {};
+    const subKeys = Object.keys(subcategories).filter(k => k !== '_order');
+    if (subKeys.length > 0) {
+      return subKeys.reduce((sum, key) => sum + getPeriodSubLimit(subcategories[key], period), 0);
+    }
+    
+    const rawLimit = catData.limit;
+    const dueDate = catData.dueDate || '';
+    const dueDays = String(dueDate || '')
+      .split(',')
+      .map(d => parseInt(d.trim(), 10))
+      .filter(d => !isNaN(d) && d >= 1 && d <= 31);
+      
+    if (period === 'month') {
+      if (typeof rawLimit === 'object' && rawLimit !== null) {
+        return dueDays.reduce((sum, d) => sum + (parseFloat(rawLimit[d]) || 0), 0);
+      }
+      const mult = dueDays.length > 0 ? dueDays.length : 1;
+      return (parseFloat(rawLimit) || 0) * mult;
+    }
+    
+    if (period === 'paycheck1') {
+      if (dueDays.length > 0) {
+        const p1Days = dueDays.filter(d => d <= 14);
+        if (p1Days.length === 0) return 0;
+        if (typeof rawLimit === 'object' && rawLimit !== null) {
+          return p1Days.reduce((sum, d) => sum + (parseFloat(rawLimit[d]) || 0), 0);
+        }
+        return (parseFloat(rawLimit) || 0) * p1Days.length;
+      }
+      return (parseFloat(rawLimit) || 0) / 2;
+    }
+    
+    if (period === 'paycheck2') {
+      if (dueDays.length > 0) {
+        const p2Days = dueDays.filter(d => d >= 15);
+        if (p2Days.length === 0) return 0;
+        if (typeof rawLimit === 'object' && rawLimit !== null) {
+          return p2Days.reduce((sum, d) => sum + (parseFloat(rawLimit[d]) || 0), 0);
+        }
+        return (parseFloat(rawLimit) || 0) * p2Days.length;
+      }
+      return (parseFloat(rawLimit) || 0) / 2;
+    }
+    
+    return parseFloat(rawLimit) || 0;
+  };
 
   const toggleCategory = (cat) => {
     setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }))
@@ -456,7 +550,25 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
 
   const handleEditSubcatSaveDirect = async (cat, subName, limitVal, dueVal) => {
     if (!user) return
-    const subcatData = { limit: parseFloat(limitVal) || 0, dueDate: dueVal || '' }
+    const dueDays = String(dueVal || '').split(',').map(d => d.trim()).filter(d => !isNaN(d) && d !== '')
+    let finalLimit
+    if (dueDays.length > 1) {
+      finalLimit = {}
+      dueDays.forEach(day => {
+        if (typeof limitVal === 'object' && limitVal !== null) {
+          finalLimit[day] = parseFloat(limitVal[day]) || 0
+        } else {
+          finalLimit[day] = parseFloat(limitVal) || 0
+        }
+      })
+    } else {
+      if (typeof limitVal === 'object' && limitVal !== null) {
+        finalLimit = Object.values(limitVal).reduce((s, val) => s + (parseFloat(val) || 0), 0)
+      } else {
+        finalLimit = parseFloat(limitVal) || 0
+      }
+    }
+    const subcatData = { limit: finalLimit, dueDate: dueVal || '' }
     try {
       await updateDoc(doc(db, 'budgets', `${householdId}-${selectedMonth}`), {
         [`${cat}.subcategories.${subName}`]: subcatData
@@ -489,7 +601,27 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
     if (!user || !editName) return
     setIsSaving(true)
     const oldName = editingSubcat.oldName
-    const subcatData = { limit: parseFloat(editLimit) || 0, dueDate: editDue || '' }
+
+    const dueDays = String(editDue || '').split(',').map(d => d.trim()).filter(d => !isNaN(d) && d !== '')
+    let finalLimit
+    if (dueDays.length > 1) {
+      finalLimit = {}
+      dueDays.forEach(day => {
+        if (typeof editLimit === 'object' && editLimit !== null) {
+          finalLimit[day] = parseFloat(editLimit[day]) || 0
+        } else {
+          finalLimit[day] = parseFloat(editLimit) || 0
+        }
+      })
+    } else {
+      if (typeof editLimit === 'object' && editLimit !== null) {
+        finalLimit = Object.values(editLimit).reduce((s, val) => s + (parseFloat(val) || 0), 0)
+      } else {
+        finalLimit = parseFloat(editLimit) || 0
+      }
+    }
+
+    const subcatData = { limit: finalLimit, dueDate: editDue || '' }
     try {
       const docRef = doc(db, 'budgets', `${householdId}-${selectedMonth}`)
       if (oldName !== editName) {
@@ -609,15 +741,24 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
   })
 
   transactions
-    .filter(t => t.type === 'expense')
+    .filter(t => t.type === 'expense' || t.type === 'refund')
+    .filter(t => {
+      if (payPeriod === 'month') return true;
+      const txDay = t.date ? (parseInt((t.date.split('T')[0] || '').split('-')[2], 10) || 1) : 1;
+      if (payPeriod === 'paycheck1') return txDay <= 14;
+      if (payPeriod === 'paycheck2') return txDay >= 15;
+      return true;
+    })
     .forEach(t => {
-      // Parse transaction date day
-      const txDay = t.date ? new Date(t.date).getDate() : 1;
+      // Parse transaction date day — use string split to avoid UTC timezone offset
+      const txDay = t.date ? (parseInt((t.date.split('T')[0] || '').split('-')[2], 10) || 1) : 1;
+      const isRefund = t.type === 'refund';
 
       if (t.splits?.length > 0) {
         t.splits.forEach(split => {
           const splitCat = split.category || t.category;
-          const amt = parseFloat(split.amount) || 0;
+          let amt = parseFloat(split.amount) || 0;
+          if (isRefund) amt = -amt;
           if (categorySpent[splitCat]) {
             categorySpent[splitCat].total += amt;
             if (split.subcategory) {
@@ -629,7 +770,8 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
           }
         });
       } else {
-        const amt = parseFloat(t.amount) || 0;
+        let amt = parseFloat(t.amount) || 0;
+        if (isRefund) amt = -amt;
         const cat = t.category;
         if (categorySpent[cat]) {
           categorySpent[cat].total += amt;
@@ -659,6 +801,60 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
         </button>
       </div>
 
+      <div className="period-toggle-group" style={{ display: 'flex', gap: '8px', marginBottom: '20px', background: 'rgba(255, 255, 255, 0.03)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border)', width: 'fit-content' }}>
+        <button 
+          className="btn"
+          onClick={() => setPayPeriod('month')}
+          style={{
+            padding: '6px 12px',
+            fontSize: '0.82rem',
+            fontWeight: '600',
+            borderRadius: '6px',
+            border: 'none',
+            background: payPeriod === 'month' ? 'var(--primary)' : 'transparent',
+            color: payPeriod === 'month' ? '#fff' : 'var(--text-secondary)',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          Full Month
+        </button>
+        <button 
+          className="btn"
+          onClick={() => setPayPeriod('paycheck1')}
+          style={{
+            padding: '6px 12px',
+            fontSize: '0.82rem',
+            fontWeight: '600',
+            borderRadius: '6px',
+            border: 'none',
+            background: payPeriod === 'paycheck1' ? 'var(--primary)' : 'transparent',
+            color: payPeriod === 'paycheck1' ? '#fff' : 'var(--text-secondary)',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          1st Paycheck (1st-14th)
+        </button>
+        <button 
+          className="btn"
+          onClick={() => setPayPeriod('paycheck2')}
+          style={{
+            padding: '6px 12px',
+            fontSize: '0.82rem',
+            fontWeight: '600',
+            borderRadius: '6px',
+            border: 'none',
+            background: payPeriod === 'paycheck2' ? 'var(--primary)' : 'transparent',
+            color: payPeriod === 'paycheck2' ? '#fff' : 'var(--text-secondary)',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          2nd Paycheck (15th-End)
+        </button>
+      </div>
+
       <DndContext
         sensors={sensors}
         collisionDetection={typeSafeCollision}
@@ -676,7 +872,7 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
               const catData = budgets?.[cat] ?? { limit: 0, dueDate: '', subcategories: {} }
               const spent = categorySpent[cat]?.total || 0
               const subcategories = catData.subcategories || {}
-              const limit = calculateCatLimit(catData)
+              const limit = getPeriodCatLimit(catData, payPeriod)
               const percent = limit > 0 ? (spent / limit) * 100 : (spent > 0 ? 101 : 0)
               const progressPercent = Math.min(100, percent)
               const color = getColor(percent)
@@ -691,7 +887,7 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
               return (
                 <SortableCategoryRow key={cat} id={cat}>
                   {({ dragHandleProps }) => (
-                    <div style={{ background: 'var(--bg-base)', borderRadius: '10px', border: '1px solid var(--border)', overflow: 'hidden' }}>
+                    <div className="category-card" style={{ background: 'var(--bg-base)', borderRadius: '10px', border: '1px solid var(--border)', overflow: 'hidden' }}>
 
                       {/* ── Category Header ─── */}
                       <div
@@ -705,7 +901,7 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                             <span style={{ fontWeight: '600', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>Editing: {cat}</span>
                             <div style={{ display: 'flex', gap: '8px' }}>
                               <input type="number" placeholder="Amount" min="0" step="0.01" value={editLimit} onChange={e => setEditLimit(e.target.value)}
-                                onBlur={() => handleEditCatSaveDirect(cat, editLimit, '')}
+                                onBlur={() => handleEditCatSaveDirect(cat, editLimit, editDue)}
                                 style={{ flex: 1, padding: '10px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '1rem' }} inputMode="decimal" />
                             </div>
                             <div style={{ display: 'flex', gap: '8px' }}>
@@ -714,7 +910,7 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                           </form>
                         ) : (
                           <>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                            <div className="category-header-main" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
                                 {/* Drag handle */}
                                 <button
@@ -740,7 +936,7 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                                       minWidth: 0,
                                     }}>{cat}</span>
                                     <button
-                                      className="btn btn-ghost btn-icon"
+                                      className="btn btn-ghost btn-icon cat-action-btn"
                                       onClick={(e) => startEditCat(e, cat, catData)}
                                       style={{ padding: '3px', color: 'var(--text-secondary)', opacity: 0.6 }}
                                       title="Edit category limit"
@@ -748,7 +944,7 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                                       <Pencil size={12} />
                                     </button>
                                     <button
-                                      className="btn btn-ghost btn-icon"
+                                      className="btn btn-ghost btn-icon cat-action-btn"
                                       onClick={(e) => handleDeleteCategory(e, cat)}
                                       style={{ padding: '3px', color: 'var(--danger)', opacity: 0.6 }}
                                       title="Delete category"
@@ -760,21 +956,34 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                               </div>
 
                               <span style={{ fontWeight: '500', fontSize: '0.9rem', flexShrink: 0, marginLeft: '8px', textAlign: 'right' }}>
-                                {spent > 0 ? (
-                                  <>
-                                    <span style={{ color }}>${spent.toFixed(2)}</span>
-                                    <span style={{ color: 'var(--text-secondary)', margin: '0 3px' }}>/</span>
-                                    <span style={{ color: 'var(--text-primary)' }}>${limit.toFixed(2)}</span>
-                                  </>
-                                ) : (
-                                  <span style={{ color: 'var(--text-primary)' }}>${limit.toFixed(2)} budgeted</span>
-                                )}
+                                {(() => {
+                                  const catRemaining = limit - spent;
+                                  const catRemainingColor = catRemaining >= 0 ? 'var(--text-secondary)' : 'var(--danger)';
+                                  const catRemainingText = catRemaining >= 0 ? `$${catRemaining.toFixed(2)} left` : `$${Math.abs(catRemaining).toFixed(2)} over`;
+                                  return spent > 0 ? (
+                                    <>
+                                      <span style={{ color }}>${spent.toFixed(2)}</span>
+                                      <span style={{ color: 'var(--text-secondary)', margin: '0 3px' }}>/</span>
+                                      <span style={{ color: 'var(--text-primary)' }}>${limit.toFixed(2)}</span>
+                                      <span style={{ fontSize: '0.78rem', color: catRemainingColor, marginLeft: '6px', opacity: 0.85 }}>
+                                        ({catRemainingText})
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span style={{ color: 'var(--text-primary)' }}>${limit.toFixed(2)} budgeted</span>
+                                      <span style={{ fontSize: '0.78rem', color: catRemainingColor, marginLeft: '6px', opacity: 0.85 }}>
+                                        (${limit.toFixed(2)} left)
+                                      </span>
+                                    </>
+                                  );
+                                })()}
                               </span>
                             </div>
 
                             {/* Progress bar */}
                             <div style={{ height: '7px', background: 'var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${progressPercent}%`, background: color, transition: 'width 0.3s ease, background-color 0.3s ease' }} />
+                              <div className="progress-bar-fill" style={{ height: '100%', width: `${progressPercent}%`, background: color, transition: 'width 0.3s ease, background-color 0.3s ease' }} />
                             </div>
                           </>
                         )}
@@ -790,136 +999,385 @@ export default function BudgetProgress({ transactions, budgets, user, householdI
                           )}
 
                           {(() => {
-                             const sortableItems = [];
-                             allSubs.forEach(sub => {
-                               const subData = typeof subcategories[sub] === 'object' ? subcategories[sub] : { limit: subcategories[sub] || 0, dueDate: '' };
-                               const subDueDays = String(subData.dueDate || '').split(',').map(d => parseInt(d.trim())).filter(d => !isNaN(d) && d >= 1 && d <= 31);
-                               const sortedDays = [...subDueDays].sort((a, b) => a - b);
-                               if (sortedDays.length > 1) {
-                                 sortedDays.forEach(day => sortableItems.push(`${cat}::${sub}::${day}`));
-                               } else {
-                                 sortableItems.push(`${cat}::${sub}`);
-                               }
-                             });
+                            const groups = {}; // { [dayStr]: { itemIds: [], elements: [] } }
+                            
+                            allSubs.forEach(sub => {
+                              const subData = typeof subcategories[sub] === 'object'
+                                ? subcategories[sub]
+                                : { limit: subcategories[sub] || 0, dueDate: '' };
+                              
+                              const subDueDays = String(subData.dueDate || '')
+                                .split(',')
+                                .map(d => parseInt(d.trim()))
+                                .filter(d => !isNaN(d) && d >= 1 && d <= 31);
+                              
+                              const sortedDays = [...subDueDays].sort((a, b) => a - b);
+                              
+                              const instances = sortedDays.length > 1
+                                ? sortedDays.map(day => ({ subName: sub, day, isSplitInstance: true }))
+                                : [{ subName: sub, day: sortedDays[0] || null, isSplitInstance: false }];
+                              
+                              instances.forEach((inst) => {
+                                if (payPeriod === 'paycheck1' && inst.day !== null && inst.day > 14) return;
+                                if (payPeriod === 'paycheck2' && inst.day !== null && inst.day < 15) return;
 
-                             return (
-                               <SortableContext items={sortableItems} strategy={verticalListSortingStrategy}>
-                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                   {(() => {
-                                     const renderedElements = [];
-                                     
-                                     allSubs.forEach(sub => {
-                                       const subData = typeof subcategories[sub] === 'object'
-                                         ? subcategories[sub]
-                                         : { limit: subcategories[sub] || 0, dueDate: '' }
-                                       
-                                       const subDueDays = String(subData.dueDate || '')
-                                         .split(',')
-                                         .map(d => parseInt(d.trim()))
-                                         .filter(d => !isNaN(d) && d >= 1 && d <= 31);
-                                       
-                                       const sortedDays = [...subDueDays].sort((a, b) => a - b);
-                                       
-                                       const instances = sortedDays.length > 1
-                                         ? sortedDays.map(day => ({ subName: sub, day, isSplitInstance: true }))
-                                         : [{ subName: sub, day: sortedDays[0] || null, isSplitInstance: false }];
-                                       
-                                       instances.forEach((inst, instIdx) => {
-                                         const displaySubName = inst.isSplitInstance ? `${sub} (${inst.day}${getOrdinal(inst.day)})` : sub;
-                                         const subSpent = getSubInstanceSpent(categorySpent[cat]?.subs[sub], sortedDays, inst.day);
-                                         const subLimit = parseFloat(subData.limit) || 0;
-                                         const subPercentRaw = subLimit > 0 ? (subSpent / subLimit) * 100 : (subSpent > 0 ? 101 : 0)
-                                         const subColor = getColor(subPercentRaw)
-                                         
-                                         const sortableId = inst.isSplitInstance ? `${cat}::${sub}::${inst.day}` : `${cat}::${sub}`;
-                                         
-                                         renderedElements.push(
-                                           <SortableSubRow key={sortableId} id={sortableId} cat={cat}>
-                                             {({ dragHandleProps: subDragProps }) => (
-                                               <div>
-                                                 {editingSubcat?.cat === cat && editingSubcat?.oldName === sub ? (
-                                                   <form onSubmit={(e) => handleEditSubcatSave(e, cat)} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', background: 'var(--bg-base)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-                                                     <span style={{ fontWeight: '600', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Editing: {sub}</span>
-                                                     <input type="text" required value={editName} onChange={e => setEditName(e.target.value)}
-                                                       style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem', boxSizing: 'border-box' }}
-                                                       placeholder="Subcategory name" />
-                                                     <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                                                        <input type="number" placeholder="Amount" min="0" step="0.01" value={editLimit} onChange={e => setEditLimit(e.target.value)}
-                                                          onBlur={() => handleEditSubcatSaveDirect(cat, editName, editLimit, editDue)}
-                                                          style={{ flex: '1 1 100px', minWidth: '100px', padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem' }} inputMode="decimal" />
-                                                        <div style={{ flex: '2 1 180px', minWidth: '180px' }}>
-                                                          <CalendarDayPicker 
-                                                            value={editDue} 
-                                                            onChange={(val) => {
-                                                              setEditDue(val);
-                                                              handleEditSubcatSaveDirect(cat, editName, editLimit, val);
-                                                            }} 
+                                const groupKey = inst.day !== null ? String(inst.day) : 'no-date';
+                                if (!groups[groupKey]) {
+                                  groups[groupKey] = { itemIds: [], elements: [] };
+                                }
+                                
+                                const displaySubName = inst.isSplitInstance ? `${sub} (${inst.day}${getOrdinal(inst.day)})` : sub;
+                                const subSpent = getSubInstanceSpent(categorySpent[cat]?.subs[sub], sortedDays, inst.day);
+                                let subLimit = getSubLimitForInstance(subData, inst.day);
+                                if (payPeriod !== 'month' && inst.day === null) {
+                                  subLimit = subLimit / 2;
+                                }
+                                const subPercentRaw = subLimit > 0 ? (subSpent / subLimit) * 100 : (subSpent > 0 ? 101 : 0);
+                                const subColor = getColor(subPercentRaw);
+                                const sortableId = inst.isSplitInstance ? `${cat}::${sub}::${inst.day}` : `${cat}::${sub}`;
+                                
+                                groups[groupKey].itemIds.push(sortableId);
+                                
+                                // Gather all transactions matching this subcategory for the dropdown list
+                                let subTxList = transactions.filter(t => {
+                                  if (t.type !== 'expense' && t.type !== 'refund') return false;
+                                  if (!t.date?.startsWith(selectedMonth)) return false;
+                                  if (t.splits?.length > 0) {
+                                    return t.splits.some(split => {
+                                      const splitCat = split.category || t.category;
+                                      return splitCat === cat && split.subcategory === sub;
+                                    });
+                                  } else {
+                                    return t.category === cat && t.subcategory === sub;
+                                  }
+                                });
+
+                                // Filter by active due date instance if there are multiple due dates
+                                if (sortedDays.length > 1 && inst.day !== null) {
+                                  subTxList = subTxList.filter(t => {
+                                    const txDay = t.date ? (parseInt((t.date.split('T')[0] || '').split('-')[2], 10) || 1) : 1;
+                                    const dueDaysLessOrEqual = sortedDays.filter(d => txDay >= d);
+                                    let assignedDay;
+                                    if (dueDaysLessOrEqual.length > 0) {
+                                      assignedDay = dueDaysLessOrEqual[dueDaysLessOrEqual.length - 1];
+                                    } else {
+                                      assignedDay = sortedDays[0];
+                                    }
+                                    return assignedDay === inst.day;
+                                  });
+                                }
+
+                                const hasCharges = subTxList.length > 0;
+                                const isTxExpanded = !!expandedSubTx[`${cat}::${sub}`];
+
+                                groups[groupKey].elements.push(
+                                  <SortableSubRow key={sortableId} id={sortableId} cat={cat}>
+                                    {({ dragHandleProps: subDragProps }) => (
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                        {editingSubcat?.cat === cat && editingSubcat?.oldName === sub ? (
+                                          <form onSubmit={(e) => handleEditSubcatSave(e, cat)} style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '10px', background: 'var(--bg-base)', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                                            <span style={{ fontWeight: '600', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Editing: {sub}</span>
+                                            <input type="text" required value={editName} onChange={e => setEditName(e.target.value)}
+                                              style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem', boxSizing: 'border-box' }}
+                                              placeholder="Subcategory name" />
+                                            {(() => {
+                                              const dueDays = String(editDue || '').split(',').map(d => d.trim()).filter(d => !isNaN(d) && d !== '');
+                                              return (
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                                                  <div style={{ width: '100%' }}>
+                                                    <CalendarDayPicker 
+                                                      value={editDue} 
+                                                      onChange={(val) => {
+                                                        setEditDue(val);
+                                                        handleEditSubcatSaveDirect(cat, editName, editLimit, val);
+                                                      }} 
+                                                    />
+                                                  </div>
+                                                  
+                                                  {dueDays.length > 1 ? (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border)', borderRadius: '6px', padding: '8px', boxSizing: 'border-box' }}>
+                                                      <span style={{ fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-secondary)' }}>Split limits by due date:</span>
+                                                      {dueDays.map(day => (
+                                                        <div key={day} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                          <span style={{ fontSize: '0.8rem', width: '45px', color: 'var(--text-secondary)', fontWeight: '500' }}>{day}{getOrdinal(parseInt(day))}:</span>
+                                                          <input 
+                                                            type="number" 
+                                                            placeholder="Amount" 
+                                                            min="0" 
+                                                            step="0.01" 
+                                                            value={typeof editLimit === 'object' && editLimit !== null ? (editLimit[day] ?? '') : ''} 
+                                                            onChange={e => {
+                                                              const val = e.target.value;
+                                                              setEditLimit(prev => {
+                                                                const current = typeof prev === 'object' && prev !== null ? { ...prev } : {};
+                                                                current[day] = val;
+                                                                return current;
+                                                              });
+                                                            }}
+                                                            onBlur={() => {
+                                                              const current = typeof editLimit === 'object' && editLimit !== null ? { ...editLimit } : {};
+                                                              handleEditSubcatSaveDirect(cat, editingSubcat?.oldName ?? editName, current, editDue);
+                                                            }}
+                                                            style={{ flex: 1, padding: '7px 9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.85rem' }} 
+                                                            inputMode="decimal" 
                                                           />
                                                         </div>
-                                                      </div>
-                                                     <div style={{ display: 'flex', gap: '8px' }}>
-                                                       <button type="button" className="btn btn-ghost" onClick={() => setEditingSubcat(null)} style={{ flex: 1 }}>Done</button>
-                                                     </div>
-                                                     <button type="button" className="btn btn-ghost" onClick={() => handleDeleteSubcat(cat, sub)}
-                                                       style={{ color: 'var(--danger)', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                                                       <Trash2 size={12} /> Delete Subcategory
-                                                     </button>
-                                                   </form>
-                                                 ) : (
-                                                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                       {/* Sub drag handle */}
-                                                       <button
-                                                         {...subDragProps}
-                                                         onClick={e => e.stopPropagation()}
-                                                         style={{ cursor: 'grab', color: 'var(--text-secondary)', background: 'none', border: 'none', padding: '2px', display: 'flex', alignItems: 'center', opacity: 0.5, flexShrink: 0, touchAction: 'none' }}
-                                                         title="Drag to reorder"
-                                                       >
-                                                         <GripVertical size={14} />
-                                                       </button>
+                                                      ))}
+                                                    </div>
+                                                  ) : (
+                                                    <input 
+                                                      type="number" 
+                                                      placeholder="Amount" 
+                                                      min="0" 
+                                                      step="0.01" 
+                                                      value={typeof editLimit === 'object' && editLimit !== null ? (Object.values(editLimit)[0] ?? '') : editLimit} 
+                                                      onChange={e => setEditLimit(e.target.value)}
+                                                      onBlur={() => handleEditSubcatSaveDirect(cat, editingSubcat?.oldName ?? editName, editLimit, editDue)}
+                                                      style={{ width: '100%', padding: '9px', borderRadius: '6px', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: '0.95rem', boxSizing: 'border-box' }} 
+                                                      inputMode="decimal" 
+                                                    />
+                                                  )}
+                                                </div>
+                                              );
+                                            })()}
+                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                              <button type="button" className="btn btn-ghost" onClick={() => setEditingSubcat(null)} style={{ flex: 1 }}>Cancel</button>
+                                              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Done</button>
+                                            </div>
+                                            <button type="button" className="btn btn-ghost" onClick={() => handleDeleteSubcat(cat, sub)}
+                                              style={{ color: 'var(--danger)', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                              <Trash2 size={12} /> Delete Subcategory
+                                            </button>
+                                          </form>
+                                        ) : (
+                                          <div 
+                                            className="subcategory-row"
+                                            style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}
+                                            onClick={() => {
+                                              if (hasCharges) {
+                                                setExpandedSubTx(prev => ({
+                                                  ...prev,
+                                                  [`${cat}::${sub}`]: !prev[`${cat}::${sub}`]
+                                                }));
+                                              }
+                                            }}
+                                          >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: hasCharges ? 'pointer' : 'default' }}>
+                                              {/* Sub drag handle */}
+                                              <button
+                                                {...subDragProps}
+                                                onClick={e => e.stopPropagation()}
+                                                style={{ cursor: 'grab', color: 'var(--text-secondary)', background: 'none', border: 'none', padding: '2px', display: 'flex', alignItems: 'center', opacity: 0.5, flexShrink: 0, touchAction: 'none' }}
+                                                title="Drag to reorder"
+                                              >
+                                                <GripVertical size={14} />
+                                              </button>
 
-                                                       <span style={{ 
-                                                          flex: 1, 
-                                                          fontSize: '0.9rem', 
-                                                          fontWeight: '500',
-                                                          overflow: 'hidden',
-                                                          textOverflow: 'ellipsis',
-                                                          whiteSpace: 'nowrap',
-                                                          minWidth: 0,
-                                                        }}>{displaySubName}</span>
+                                              {/* Sub expand chevron (only show if charges exist) */}
+                                              {hasCharges ? (
+                                                <div style={{ flexShrink: 0, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center' }}>
+                                                  {isTxExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                                </div>
+                                              ) : (
+                                                <div style={{ width: 14, flexShrink: 0 }} />
+                                              )}
 
-                                                       <span style={{ fontSize: '0.85rem', fontWeight: '500', flexShrink: 0 }}>
-                                                         <span style={{ color: subColor }}>${subSpent.toFixed(2)}</span>
-                                                         <span style={{ color: 'var(--text-secondary)', margin: '0 3px' }}>/</span>
-                                                         <span style={{ color: 'var(--text-primary)' }}>${subLimit.toFixed(2)}</span>
-                                                       </span>
+                                              <span className="subcategory-name-span" style={{ 
+                                                 flex: 1, 
+                                                 fontSize: '0.9rem', 
+                                                 fontWeight: '500',
+                                                 overflow: 'hidden',
+                                                 textOverflow: 'ellipsis',
+                                                 whiteSpace: 'nowrap',
+                                                 minWidth: 0,
+                                              }}>{displaySubName}</span>
 
-                                                       <button className="btn btn-ghost btn-icon" onClick={(e) => startEditSubcat(e, cat, sub, subData)}
-                                                         style={{ padding: '3px', color: 'var(--text-secondary)', flexShrink: 0 }} title="Edit">
-                                                         <Pencil size={12} />
-                                                       </button>
-                                                     </div>
+                                              <span 
+                                                className="subcategory-limit-span"
+                                                style={{ fontSize: '0.85rem', fontWeight: '500', flexShrink: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
+                                                onDoubleClick={(e) => {
+                                                  e.stopPropagation();
+                                                  startEditSubcat(e, cat, sub, subData);
+                                                }}
+                                                title="Double click to edit limit"
+                                              >
+                                                {(() => {
+                                                  const subRemaining = subLimit - subSpent;
+                                                  const subRemainingColor = subRemaining >= 0 ? 'var(--text-secondary)' : 'var(--danger)';
+                                                  const subRemainingText = subRemaining >= 0 ? `$${subRemaining.toFixed(2)} left` : `$${Math.abs(subRemaining).toFixed(2)} over`;
+                                                  return (
+                                                    <>
+                                                      <span style={{ color: subColor }}>${subSpent.toFixed(2)}</span>
+                                                      <span style={{ color: 'var(--text-secondary)' }}>/</span>
+                                                      <span style={{ color: 'var(--text-primary)' }}>${subLimit.toFixed(2)}</span>
+                                                      <span style={{ fontSize: '0.75rem', color: subRemainingColor, marginLeft: '3px', opacity: 0.85 }}>
+                                                        ({subRemainingText})
+                                                      </span>
+                                                    </>
+                                                  );
+                                                })()}
+                                              </span>
 
-                                                     {renderDueDate(inst.day)}
+                                              <button 
+                                                className="btn btn-ghost btn-icon subcat-action-btn" 
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  document.dispatchEvent(new CustomEvent('prefill-category', { 
+                                                    detail: { category: cat, subcategory: sub } 
+                                                  }));
+                                                }}
+                                                style={{ padding: '3px', color: 'var(--primary)', flexShrink: 0, marginRight: '4px' }} 
+                                                title="Add transaction to this subcategory"
+                                              >
+                                                <Plus size={12} />
+                                              </button>
 
-                                                     <div style={{ height: '5px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
-                                                       <div style={{ height: '100%', width: `${Math.min(100, subPercentRaw)}%`, background: subColor, transition: 'width 0.3s ease' }} />
-                                                     </div>
-                                                   </div>
-                                                 )}
-                                               </div>
-                                             )}
-                                           </SortableSubRow>
-                                         );
-                                       });
-                                     });
-                                     return renderedElements;
-                                   })()}
-                                 </div>
-                               </SortableContext>
-                             );
-                           })()}
+                                              <button 
+                                                className="btn btn-ghost btn-icon subcat-action-btn" 
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  startEditSubcat(e, cat, sub, subData);
+                                                }}
+                                                style={{ padding: '3px', color: 'var(--text-secondary)', flexShrink: 0 }} 
+                                                title="Edit"
+                                              >
+                                                <Pencil size={12} />
+                                              </button>
+                                            </div>
 
+                                            {renderDueDate(inst.day)}
+
+                                            <div style={{ height: '5px', background: 'var(--border)', borderRadius: '3px', overflow: 'hidden' }}>
+                                              <div className="progress-bar-fill" style={{ height: '100%', width: `${Math.min(100, subPercentRaw)}%`, background: subColor, transition: 'width 0.3s ease' }} />
+                                            </div>
+                                          </div>
+                                        )}
+
+                                        {/* Transaction dropdown block */}
+                                        {isTxExpanded && hasCharges && (
+                                          <div 
+                                            onClick={e => e.stopPropagation()} 
+                                            style={{
+                                              background: 'rgba(255, 255, 255, 0.02)',
+                                              border: '1px solid var(--border)',
+                                              borderRadius: '8px',
+                                              padding: '8px 10px',
+                                              marginTop: '4px',
+                                              marginLeft: '20px',
+                                              display: 'flex',
+                                              flexDirection: 'column',
+                                              gap: '8px',
+                                              boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)'
+                                            }}
+                                          >
+                                            {subTxList.map(tx => {
+                                              // Compute display amount for splits vs standard
+                                              let amt;
+                                              const isSplit = tx.splits?.length > 0;
+                                              if (isSplit) {
+                                                const s = tx.splits.find(sp => (sp.category || tx.category) === cat && sp.subcategory === sub);
+                                                amt = s ? parseFloat(s.amount) || 0 : 0;
+                                              } else {
+                                                amt = parseFloat(tx.amount) || 0;
+                                              }
+                                              const isRefund = tx.type === 'refund';
+                                              const txAmt = isRefund ? -amt : amt;
+
+                                              return (
+                                                <div 
+                                                  key={tx.id} 
+                                                  style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    justifyContent: 'space-between',
+                                                    gap: '8px',
+                                                    fontSize: '0.82rem',
+                                                    borderBottom: '1px solid rgba(255,255,255,0.02)',
+                                                    paddingBottom: '4px'
+                                                  }}
+                                                >
+                                                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', minWidth: 0, flex: 1 }}>
+                                                    <span style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', flexShrink: 0 }}>
+                                                      {tx.date ? new Date((tx.date.split('T')[0]) + 'T12:00:00').toLocaleDateString(undefined, {month: 'numeric', day: 'numeric'}) : ''}
+                                                    </span>
+                                                    <span style={{ fontWeight: '500', color: 'var(--text-primary)', textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap', minWidth: 0 }}>
+                                                      {tx.title} {isSplit && <span style={{ fontSize: '0.7rem', color: 'var(--primary)', background: 'var(--primary-bg)', padding: '1px 4px', borderRadius: '4px', marginLeft: '4px' }}>Split</span>}
+                                                    </span>
+                                                  </div>
+
+                                                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                                                    <span style={{ fontWeight: '600', color: isRefund ? 'var(--success)' : 'var(--text-primary)' }}>
+                                                      {isRefund ? '+' : '-'}${Math.abs(txAmt).toFixed(2)}
+                                                    </span>
+                                                    
+                                                    <button 
+                                                      className="btn btn-ghost btn-icon tx-inline-btn"
+                                                      onClick={() => {
+                                                        document.dispatchEvent(new CustomEvent('edit-transaction', { detail: tx }));
+                                                      }}
+                                                      style={{ padding: '2px', color: 'var(--text-secondary)' }}
+                                                      title="Edit transaction"
+                                                    >
+                                                      <Pencil size={11} />
+                                                    </button>
+
+                                                    <button 
+                                                      className="btn btn-ghost btn-icon tx-inline-btn"
+                                                      onClick={async () => {
+                                                        if (window.confirm(`Delete transaction "${tx.title}"?`)) {
+                                                          try {
+                                                            await deleteDoc(doc(db, 'transactions', tx.id));
+                                                          } catch (err) {
+                                                            console.error(err);
+                                                            alert("Failed to delete transaction");
+                                                          }
+                                                        }
+                                                      }}
+                                                      style={{ padding: '2px', color: 'var(--danger)' }}
+                                                      title="Delete transaction"
+                                                    >
+                                                      <Trash2 size={11} />
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </SortableSubRow>
+                                );
+                              });
+                            });
+
+                            const sortedGroupKeys = Object.keys(groups).sort((a, b) => {
+                              if (a === 'no-date') return 1;
+                              if (b === 'no-date') return -1;
+                              return Number(a) - Number(b);
+                            });
+
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                {sortedGroupKeys.map(groupKey => {
+                                  const { itemIds, elements } = groups[groupKey];
+                                  return (
+                                    <div key={groupKey} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                      <div style={{ fontSize: '0.78rem', fontWeight: '700', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid rgba(255, 255, 255, 0.05)', paddingBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <Calendar size={12} style={{ color: 'var(--primary)', opacity: 0.8 }} />
+                                        <span>{groupKey === 'no-date' ? 'No Due Date' : `Due on the ${groupKey}${getOrdinal(Number(groupKey))}`}</span>
+                                      </div>
+                                      <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                          {elements}
+                                        </div>
+                                      </SortableContext>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
                           {/* Add Subcategory */}
                           {addingSubcatTo === cat ? (
                             <form onSubmit={(e) => handleSaveInlineSubcategory(e, cat)}
