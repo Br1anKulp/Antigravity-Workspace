@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
+import { useModalBackHandler } from '../utils/modalHistory';
 
 export interface ModalProps {
   isOpen: boolean;
@@ -20,6 +21,9 @@ export const Modal: React.FC<ModalProps> = ({
 }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  // Intercept Android hardware Back button / gesture when modal is open
+  useModalBackHandler(isOpen, onClose, 'generic-modal');
 
   useEffect(() => {
     if (isOpen) {

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { format, parseISO } from 'date-fns';
+import React, { useState, useMemo } from 'react';
+import { format, parseISO, addWeeks, endOfDay } from 'date-fns';
 import { Trash2 } from 'lucide-react';
 import type { CalendarEvent } from '../../store/calendarStore';
+import { useModalBackHandler } from '../../utils/modalHistory';
 
 interface EventModalProps {
   isOpen: boolean;
@@ -38,6 +39,35 @@ export const EventModal: React.FC<EventModalProps> = ({
   const [recFreq, setRecFreq] = useState<'none' | 'daily' | 'weekly' | 'monthly'>(selectedEvent?.recurring?.frequency || 'none');
   const [recInterval, setRecInterval] = useState(selectedEvent?.recurring?.interval || 1);
 
+  // Recurrence End Options
+  const initialEndType = selectedEvent?.recurring?.endType
+    ? selectedEvent.recurring.endType
+    : selectedEvent?.recurring?.until
+    ? 'date'
+    : 'never';
+  const [recEndType, setRecEndType] = useState<'never' | 'date' | 'weeks'>(initialEndType);
+  const [recEndWeeks, setRecEndWeeks] = useState<number>(selectedEvent?.recurring?.endWeeks || 4);
+  const [recEndDate, setRecEndDate] = useState<string>(
+    selectedEvent?.recurring?.until
+      ? format(parseISO(selectedEvent.recurring.until), 'yyyy-MM-dd')
+      : format(addWeeks(startObj, 4), 'yyyy-MM-dd')
+  );
+
+  // Intercept Android hardware Back button / gesture when modal is open
+  useModalBackHandler(isOpen, onClose, 'event-modal');
+
+  // Dynamic preview date when ending after number of weeks
+  const computedWeeksEndDate = useMemo(() => {
+    try {
+      const baseDate = parseISO(startDateStr);
+      if (isNaN(baseDate.getTime())) return null;
+      const targetDate = addWeeks(baseDate, Math.max(1, recEndWeeks));
+      return format(targetDate, 'EEE, MMM d, yyyy');
+    } catch {
+      return null;
+    }
+  }, [startDateStr, recEndWeeks]);
+
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -55,6 +85,17 @@ export const EventModal: React.FC<EventModalProps> = ({
     const endMs = new Date(endISO).getTime();
     const computedDuration = Math.max(0, Math.round((endMs - startMs) / (1000 * 60)));
 
+    let computedUntil: string | undefined = undefined;
+    if (recFreq !== 'none') {
+      if (recEndType === 'date' && recEndDate) {
+        computedUntil = endOfDay(parseISO(recEndDate)).toISOString();
+      } else if (recEndType === 'weeks') {
+        const weeksCount = Math.max(1, recEndWeeks);
+        const baseDate = parseISO(startDateStr);
+        computedUntil = endOfDay(addWeeks(baseDate, weeksCount)).toISOString();
+      }
+    }
+
     onSave({
       title,
       start: startISO,
@@ -64,7 +105,13 @@ export const EventModal: React.FC<EventModalProps> = ({
       color,
       assignee,
       notes,
-      recurring: recFreq !== 'none' ? { frequency: recFreq, interval: recInterval } : { frequency: 'none', interval: 1 }
+      recurring: recFreq !== 'none' ? {
+        frequency: recFreq,
+        interval: recInterval,
+        endType: recEndType,
+        endWeeks: recEndType === 'weeks' ? recEndWeeks : undefined,
+        until: computedUntil
+      } : { frequency: 'none', interval: 1 }
     });
   };
 
@@ -221,30 +268,89 @@ export const EventModal: React.FC<EventModalProps> = ({
           </div>
 
           {/* Recurrence Setup */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1">Recurring Event</label>
-              <select
-                value={recFreq}
-                onChange={e => setRecFreq(e.target.value as 'none' | 'daily' | 'weekly' | 'monthly')}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-brand-950 border border-slate-200 dark:border-brand-800 rounded-xl text-xs focus:outline-none text-slate-900 dark:text-slate-100 cursor-pointer"
-              >
-                <option value="none">No Recurrence</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </select>
-            </div>
-            {recFreq !== 'none' && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Every (Interval)</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={recInterval}
-                  onChange={e => setRecInterval(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-slate-50 dark:bg-brand-950 border border-slate-200 dark:border-brand-800 rounded-xl text-xs focus:outline-none text-slate-900 dark:text-slate-100"
-                />
+                <label htmlFor="recFreq" className="block text-xs font-semibold text-slate-400 mb-1">Recurring Event</label>
+                <select
+                  id="recFreq"
+                  value={recFreq}
+                  onChange={e => setRecFreq(e.target.value as 'none' | 'daily' | 'weekly' | 'monthly')}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-brand-950 border border-slate-200 dark:border-brand-800 rounded-xl text-xs focus:outline-none text-slate-900 dark:text-slate-100 cursor-pointer"
+                >
+                  <option value="none">No Recurrence</option>
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                </select>
+              </div>
+              {recFreq !== 'none' && (
+                <div>
+                  <label htmlFor="recInterval" className="block text-xs font-semibold text-slate-400 mb-1">Every (Interval)</label>
+                  <input
+                    id="recInterval"
+                    type="number"
+                    min={1}
+                    value={recInterval}
+                    onChange={e => setRecInterval(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-brand-950 border border-slate-200 dark:border-brand-800 rounded-xl text-xs focus:outline-none text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Recurrence End Options */}
+            {recFreq !== 'none' && (
+              <div className="p-3 bg-slate-50/80 dark:bg-brand-950/60 border border-slate-200/80 dark:border-brand-800/80 rounded-2xl space-y-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="recEndType" className="block text-xs font-semibold text-slate-400 mb-1">Ends</label>
+                    <select
+                      id="recEndType"
+                      value={recEndType}
+                      onChange={e => setRecEndType(e.target.value as 'never' | 'date' | 'weeks')}
+                      className="w-full px-3 py-2 bg-white dark:bg-brand-900 border border-slate-200 dark:border-brand-800 rounded-xl text-xs focus:outline-none text-slate-900 dark:text-slate-100 cursor-pointer"
+                    >
+                      <option value="never">Never (Ongoing)</option>
+                      <option value="date">On Specific Date</option>
+                      <option value="weeks">After Number of Weeks</option>
+                    </select>
+                  </div>
+
+                  {recEndType === 'date' && (
+                    <div>
+                      <label htmlFor="recEndDate" className="block text-xs font-semibold text-slate-400 mb-1">End Date</label>
+                      <input
+                        id="recEndDate"
+                        type="date"
+                        min={startDateStr}
+                        value={recEndDate}
+                        onChange={e => setRecEndDate(e.target.value)}
+                        className="w-full px-3 py-2 bg-white dark:bg-brand-900 border border-slate-200 dark:border-brand-800 rounded-xl text-xs focus:outline-none text-slate-900 dark:text-slate-100 cursor-pointer"
+                      />
+                    </div>
+                  )}
+
+                  {recEndType === 'weeks' && (
+                    <div>
+                      <label htmlFor="recEndWeeks" className="block text-xs font-semibold text-slate-400 mb-1">Number of Weeks</label>
+                      <input
+                        id="recEndWeeks"
+                        type="number"
+                        min={1}
+                        max={104}
+                        value={recEndWeeks}
+                        onChange={e => setRecEndWeeks(Math.max(1, parseInt(e.target.value, 10) || 1))}
+                        className="w-full px-3 py-2 bg-white dark:bg-brand-900 border border-slate-200 dark:border-brand-800 rounded-xl text-xs focus:outline-none text-slate-900 dark:text-slate-100"
+                      />
+                      {computedWeeksEndDate && (
+                        <p className="text-[10px] text-slate-400 dark:text-slate-400 mt-1">
+                          Repeats until <span className="font-bold text-indigo-600 dark:text-indigo-400">{computedWeeksEndDate}</span>
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { dbService } from '../firebase/db';
-import { addDays, addWeeks, addMonths, parseISO, format } from 'date-fns';
+import { addDays, addWeeks, addMonths, parseISO, format, endOfDay } from 'date-fns';
 import { useAuthStore } from './authStore';
 import { useNotificationStore } from './notificationStore';
 
@@ -22,6 +22,8 @@ export interface CalendarEvent {
   recurring?: {
     frequency: 'none' | 'daily' | 'weekly' | 'monthly';
     interval: number; // every X days/weeks/months
+    endType?: 'never' | 'date' | 'weeks';
+    endWeeks?: number;
     until?: string; // ISO date string
   };
 }
@@ -411,7 +413,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => {
       // Handle recurring events expansion
       const freq = event.recurring.frequency;
       const interval = event.recurring.interval || 1;
-      const until = event.recurring.until ? parseISO(event.recurring.until) : endDate;
+      const until = event.recurring.until ? endOfDay(parseISO(event.recurring.until)) : endDate;
       
       let currentStart = start;
       let currentEnd = end;

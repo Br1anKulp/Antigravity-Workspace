@@ -4,6 +4,7 @@ import { Calendar, Plus } from 'lucide-react';
 import type { CalendarEvent } from '../../store/calendarStore';
 import { useAuthStore } from '../../store/authStore';
 import { hapticLight } from '../../utils/haptics';
+import { useModalBackHandler } from '../../utils/modalHistory';
 
 interface DayDetailModalProps {
   isOpen: boolean;
@@ -29,6 +30,9 @@ export const DayDetailModal: React.FC<DayDetailModalProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const touchStartY = useRef(0);
   const currentDragY = useRef(0);
+
+  // Intercept Android hardware Back button / gesture when modal is open
+  useModalBackHandler(isOpen, onClose, 'day-detail-modal');
 
   if (!isOpen) return null;
 
