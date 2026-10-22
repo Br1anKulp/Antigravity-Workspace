@@ -37,6 +37,7 @@ import { CAL_PALETTE } from '../utils/constants';
 import { CommandPalette } from '../components/CommandPalette';
 import { FloatingActionButton } from '../components/FloatingActionButton';
 import { hapticLight, hapticMedium } from '../utils/haptics';
+import { useModalBackHandler } from '../utils/modalHistory';
 
 
 
@@ -88,6 +89,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showMobileMoreSheet, setShowMobileMoreSheet] = useState(false);
+
+  // Handle Android Back button / gesture to dismiss mobile sheets
+  useModalBackHandler(showMobileMoreSheet, () => setShowMobileMoreSheet(false), 'more-sheet');
+  useModalBackHandler(showCommandPalette, () => setShowCommandPalette(false), 'command-palette');
   const [moreDragY, setMoreDragY] = useState(0);
   const [isDraggingMore, setIsDraggingMore] = useState(false);
   const moreTouchStartY = useRef(0);
