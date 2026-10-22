@@ -28,7 +28,8 @@ import {
   Plus,
   ChevronDown,
   Search,
-  MoreHorizontal
+  MoreHorizontal,
+  Sparkles
 } from 'lucide-react';
 import { setMonth, setYear } from 'date-fns';
 import { isMockMode } from '../firebase/config';
@@ -36,6 +37,7 @@ import { useListsStore } from '../store/listsStore';
 import { CAL_PALETTE } from '../utils/constants';
 import { CommandPalette } from '../components/CommandPalette';
 import { FloatingActionButton } from '../components/FloatingActionButton';
+import { MilestonesModal } from '../components/Milestones/MilestonesModal';
 import { hapticLight, hapticMedium } from '../utils/haptics';
 import { useModalBackHandler } from '../utils/modalHistory';
 
@@ -89,6 +91,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showMobileMoreSheet, setShowMobileMoreSheet] = useState(false);
+  const [showMilestonesModal, setShowMilestonesModal] = useState(false);
 
   // Handle Android Back button / gesture to dismiss mobile sheets
   useModalBackHandler(showMobileMoreSheet, () => setShowMobileMoreSheet(false), 'more-sheet');
@@ -270,6 +273,24 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
           })}
 
         </nav>
+
+        {/* Milestones Button */}
+        <div className="px-4 py-1.5 border-t border-slate-100 dark:border-brand-850">
+          <button
+            onClick={() => {
+              hapticLight();
+              setShowMilestonesModal(true);
+            }}
+            className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-brand-800 cursor-pointer"
+            title="Shared Milestones & Countdowns"
+          >
+            <div className="flex items-center gap-3">
+              <Sparkles size={18} className="text-emerald-500" />
+              <span>Milestones</span>
+            </div>
+            <span className="text-xs">🏝️</span>
+          </button>
+        </div>
 
         {/* Settings Button - Moved to just above profile card */}
         <div className="px-4 py-2 border-t border-slate-100 dark:border-brand-850">
@@ -826,6 +847,27 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
                 )}
               </button>
 
+              {/* Milestones & Countdowns */}
+              <button
+                onClick={() => {
+                  hapticLight();
+                  setShowMilestonesModal(true);
+                  setShowMobileMoreSheet(false);
+                }}
+                className="col-span-2 relative p-4 rounded-2xl border flex items-center justify-between transition-all cursor-pointer bg-slate-50 dark:bg-brand-850/60 border-slate-200 dark:border-brand-800 text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-brand-800"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                    <Sparkles size={20} />
+                  </div>
+                  <div>
+                    <span className="text-sm font-bold block">Milestones & Countdowns</span>
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500">Retirement, anniversaries, goals</span>
+                  </div>
+                </div>
+                <span className="text-lg">🏝️</span>
+              </button>
+
               {/* Settings */}
               <button
                 onClick={() => {
@@ -896,6 +938,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ currentTab, setCurrentTab,
           </div>
         </div>
       )}
+
+      {/* Shared Milestones Modal */}
+      <MilestonesModal
+        isOpen={showMilestonesModal}
+        onClose={() => setShowMilestonesModal(false)}
+      />
 
     </div>
   );

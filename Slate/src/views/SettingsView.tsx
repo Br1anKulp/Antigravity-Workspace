@@ -285,13 +285,14 @@ export const SettingsView: React.FC = () => {
 
             <div className="space-y-3">
               {[
+                { key: 'eventReminder', label: 'Upcoming event reminders (15-30m) ⏰' },
+                { key: 'dueDateReminder', label: 'Task due date approaching 📅' },
+                { key: 'taskCompleted', label: 'Partner completed a task 🎉' },
+                { key: 'listUpdated', label: 'Grocery list updates 🛒' },
+                { key: 'chatMessage', label: 'New chat message 💬' },
                 { key: 'cardAssigned', label: 'Card assigned to you' },
                 { key: 'cardMoved', label: 'Card moved columns' },
-                { key: 'commentAdded', label: 'Comment posted' },
-                { key: 'dueDateReminder', label: 'Due date approaching' },
-                { key: 'cardCompleted', label: 'Card completed 🎉' },
-                { key: 'wipLimitExceeded', label: 'WIP Limit warnings ⚠️' },
-                { key: 'chatMessage', label: 'New chat message 💬' }
+                { key: 'commentAdded', label: 'Comment posted' }
               ].map(pref => (
                 <label key={pref.key} className="flex items-center justify-between cursor-pointer text-xs font-semibold py-1">
                   <span>{pref.label}</span>

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { dbService } from '../firebase/db';
 import { useAuthStore } from './authStore';
+import { useNotificationStore } from './notificationStore';
 
 export interface GroceryItem {
   id: string;
@@ -58,6 +59,18 @@ export const useListsStore = create<ListsState>((set, get) => ({
     };
 
     const doc = await dbService.add<Omit<GroceryItem, 'id'>>('groceryList', newItem);
+
+    if (authStore.partner) {
+      useNotificationStore.getState().addNotification({
+        recipientId: authStore.partner.uid,
+        senderId: user.uid,
+        senderName: user.name,
+        title: '🛒 Grocery List Updated',
+        description: `${user.name} added "${newItem.name}" to the grocery list.`,
+        type: 'listUpdated',
+        relatedType: 'list'
+      }).catch(console.error);
+    }
 
     if (doc && file) {
       try {

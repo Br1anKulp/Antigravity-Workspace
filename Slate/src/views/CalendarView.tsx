@@ -15,9 +15,13 @@ import { CalendarGrid } from '../components/Calendar/CalendarGrid';
 import { ScheduleView } from '../components/Calendar/ScheduleView';
 import { DayDetailModal } from '../components/Calendar/DayDetailModal';
 import { EventModal } from '../components/Calendar/EventModal';
+import { TodayBriefing } from '../components/Dashboard/TodayBriefing';
 
+export interface CalendarViewProps {
+  onNavigateTab?: (tab: string) => void;
+}
 
-export const CalendarView: React.FC = () => {
+export const CalendarView: React.FC<CalendarViewProps> = ({ onNavigateTab }) => {
   const { 
     events,
     loading, 
@@ -253,6 +257,12 @@ export const CalendarView: React.FC = () => {
 
       {/* Main Calendar View Canvas */}
       <div className="flex-1 space-y-3 sm:space-y-4 min-w-0">
+
+        {/* Morning Briefing Dashboard (Feature B) */}
+        <TodayBriefing 
+          onOpenEventModal={openEditModal}
+          onNavigateTab={onNavigateTab}
+        />
 
         {/* Quick Partner Filter Bar (3.B) */}
         <div className="flex items-center justify-between gap-2 pb-0.5 sm:pb-1">

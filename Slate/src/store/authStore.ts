@@ -39,6 +39,10 @@ export interface UserProfile {
     dueDateReminder: boolean;
     cardCompleted: boolean;
     wipLimitExceeded: boolean;
+    eventReminder?: boolean;
+    taskCompleted?: boolean;
+    listUpdated?: boolean;
+    morningBriefing?: boolean;
   };
 }
 

@@ -10,9 +10,9 @@ export interface NotificationItem {
   description: string;
   timestamp: string;
   read: boolean;
-  type: 'cardAssigned' | 'cardMoved' | 'commentAdded' | 'dueDateReminder' | 'cardCompleted' | 'wipLimitExceeded' | 'system' | 'chatMessage';
+  type: 'cardAssigned' | 'cardMoved' | 'commentAdded' | 'dueDateReminder' | 'cardCompleted' | 'wipLimitExceeded' | 'system' | 'chatMessage' | 'eventReminder' | 'taskCompleted' | 'listUpdated' | 'milestoneReached';
   relatedId?: string;
-  relatedType?: 'card' | 'task' | 'note' | 'event' | 'chat';
+  relatedType?: 'card' | 'task' | 'note' | 'event' | 'chat' | 'list' | 'milestone';
 }
 
 interface NotificationState {

@@ -6,6 +6,8 @@ import { useNotesStore } from './store/notesStore';
 import { useNotificationStore } from './store/notificationStore';
 import { useChatStore } from './store/chatStore';
 import { useListsStore } from './store/listsStore';
+import { useMilestonesStore } from './store/milestonesStore';
+import { startEventReminderScheduler } from './utils/notificationScheduler';
 
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AppLayout } from './layouts/AppLayout';
@@ -39,6 +41,7 @@ function App() {
 
   const subscribeMessages = useChatStore((s) => s.subscribeMessages);
   const subscribeLists = useListsStore((s) => s.subscribeItems);
+  const subscribeMilestones = useMilestonesStore((s) => s.subscribeMilestones);
 
   const [currentTab, setCurrentTab] = useState<string>(() => {
     const saved = localStorage.getItem('slate_active_tab');
@@ -117,6 +120,14 @@ function App() {
     const unsubNotes = subscribeNotes();
     const unsubMessages = subscribeMessages();
     const unsubLists = subscribeLists();
+    const unsubMilestones = subscribeMilestones();
+
+    // Start proactive event reminder scheduler
+    const stopReminderScheduler = startEventReminderScheduler(
+      () => useCalendarStore.getState().events,
+      () => uid,
+      () => user?.notificationPreferences
+    );
 
     return () => {
       clearInterval(presenceInterval);
@@ -128,8 +139,10 @@ function App() {
       unsubNotes();
       unsubMessages();
       unsubLists();
+      unsubMilestones();
+      stopReminderScheduler();
     };
-  }, [uid, updateProfile, subscribeNotifications, subscribeEvents, subscribeTasks, subscribeNotes, subscribeMessages, subscribeLists]);
+  }, [uid, updateProfile, subscribeNotifications, subscribeEvents, subscribeTasks, subscribeNotes, subscribeMessages, subscribeLists, subscribeMilestones]);
 
   if (authLoading) {
     return (
@@ -149,7 +162,7 @@ function App() {
       <AppLayout currentTab={currentTab} setCurrentTab={setCurrentTab}>
         {currentTab === 'calendar' && (
           <ErrorBoundary fallbackTitle="Calendar failed to load">
-            <CalendarView />
+            <CalendarView onNavigateTab={setCurrentTab} />
           </ErrorBoundary>
         )}
         {currentTab === 'tasks' && (
